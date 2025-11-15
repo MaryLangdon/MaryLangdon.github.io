@@ -1,885 +1,643 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-    <meta name="theme-color" content="#6750a4"> 
-    <title>Gemini 聊天模拟 App</title>
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+// 导入所有需要的图标
+import { 
+    Sun, Cloud, Zap, Droplet, Wind, Gauge, Sunrise, Sunset, Clock, MapPin, 
+    Moon, X, ChevronDown, ChevronUp, Loader 
+} from 'lucide-react';
 
-    <script type="module" src="https://unpkg.com/@material/web/all.js"></script>
+// --- 配置 (Configuration) ---
 
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+// ** ⚠️ 重要的：请在此处填入您的 OpenWeatherMap API Key **
+// 如果留空，应用将使用高保真模拟数据。
+const OPEN_WEATHER_API_KEY = ""; 
+const API_BASE_URL = "https://api.openweathermap.org/data/2.5/weather";
+
+// 简化后的主题配置
+const WEATHER_THEMES = {
+    'clear': {
+        'primary-container': 'bg-amber-100', 'on-primary-container': 'text-amber-900', 'icon-color': 'text-amber-500', 'progress-color': 'text-amber-600',
+        'dark-primary-container': 'dark:bg-amber-800', 'dark-on-primary-container': 'dark:text-amber-100', 'dark-icon-color': 'dark:text-amber-300', 'dark-progress-color': 'dark:text-amber-400',
+    },
+    'cloudy': {
+        'primary-container': 'bg-slate-200', 'on-primary-container': 'text-slate-900', 'icon-color': 'text-slate-600', 'progress-color': 'text-slate-600',
+        'dark-primary-container': 'dark:bg-slate-700', 'dark-on-primary-container': 'dark:text-slate-100', 'dark-icon-color': 'dark:text-slate-400', 'dark-progress-color': 'dark:text-slate-400',
+    }
+};
+
+const ROXY_QUOTES = {
+    'clear': { day: "天气晴朗，正是远行的好日子！希望这段旅程充满惊喜。", night: "月色真美。即使在深夜，也要保持对冒险的渴望。" },
+    'cloudy': { day: "多云的天气最适合思考魔法和策略了。专注，然后向前。", night: "云层遮住了星光，但不要紧，我心中的魔力之光永不熄灭。" },
+};
+
+// 中国和日本城市行政区划数据
+const CITIES_DATA = {
+    "直辖市 (Municipalities)": [ "北京 (Beijing)", "上海 (Shanghai)", "天津 (Tianjin)", "重庆 (Chongqing)" ],
+    "华东地区 (East China)": [ "杭州 (Hangzhou)", "南京 (Nanjing)", "福州 (Fuzhou)", "济南 (Jinan)" ],
+    "华南地区 (South China)": [ "广州 (Guangzhou)", "深圳 (Shenzhen)", "海口 (Haikou)" ],
+    "日本地区 (Japan Region)": [ "东京 (Tokyo)", "大阪 (Osaka)", "京都 (Kyoto)", "札幌 (Sapporo)", "福冈 (Fukuoka)" ],
+    "华北/西北/东北地区": [ "西安 (Xi'an)", "兰州 (Lanzhou)", "乌鲁木齐 (Ürümqi)", "沈阳 (Shenyang)", "哈尔滨 (Harbin)" ],
+};
+
+// 默认初始数据
+const INITIAL_CITY = "上海 (Shanghai)";
+
+// --- 核心工具函数 (Utility Functions) ---
+
+/**
+ * 将 OpenWeatherMap 的 weather main 字段映射为应用的简化类型
+ */
+const mapWeatherType = (main) => {
+    main = main.toLowerCase();
+    if (main.includes('clear') || main.includes('sun')) return 'clear';
+    // 将 Clouds, Haze, Fog, Mist 都视为 'cloudy' 主题
+    if (main.includes('clouds') || main.includes('haze') || main.includes('mist') || main.includes('fog')) return 'cloudy';
+    return 'cloudy'; 
+};
+
+/**
+ * 将 UNIX 时间戳转换为本地时间字符串 (注意：OpenWeatherMap的sys时间戳是UTC)
+ * 这里使用 UTC 时间戳 + 时区偏移量来计算正确的本地时间。
+ */
+const formatTimestamp = (timestamp, timezoneOffset) => {
+    // timestamp: UTC时间戳 (秒), timezoneOffset: 城市相对于UTC的秒数偏移量
+    const localDate = new Date((timestamp + timezoneOffset) * 1000);
     
-    <style id="theme-style"></style>
+    // 格式化为 HH:mm，强制使用 UTC/GMT，因为我们已经通过 offset 调整了时间
+    return localDate.toUTCString().split(' ')[4].substring(0, 5);
+};
 
-    <style>
-        /* --- 移动端适配核心：Flexbox 布局与高度控制 --- */
-        body {
-            font-family: Roboto, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: var(--md-sys-color-background);
-            color: var(--md-sys-color-on-background);
-            display: flex;
-            flex-direction: column;
-            height: 100dvh; 
-            overflow: hidden; 
+/**
+ * 模拟未来7天预报数据
+ */
+const generateMockForecast = (baseTemp, type) => {
+    return Array(7).fill().map((_, i) => ({
+        day: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][(new Date().getDay() + i) % 7],
+        temp: Number(baseTemp) + Math.floor(Math.random() * 5 - 2), 
+        type: Math.random() > 0.7 ? (type === 'clear' ? 'cloudy' : 'clear') : type,
+    }));
+};
+
+/**
+ * 根据城市生成高保真模拟数据 (当 API Key 缺失时使用)
+ */
+const generateMockWeather = (fullCityName) => {
+    const cityName = fullCityName.split(' ')[0];
+    let baseTemp, type, desc;
+
+    if (cityName.includes('哈尔滨') || cityName.includes('札幌')) {
+        baseTemp = Math.floor(Math.random() * (22 - 18) + 18);
+        type = 'cloudy';
+        desc = "阴天多云，洛琪希建议带伞。";
+    } else if (cityName.includes('广州') || cityName.includes('海口') || cityName.includes('东京')) {
+        baseTemp = Math.floor(Math.random() * (32 - 28) + 28);
+        type = 'clear';
+        desc = "晴空万里，魔法值充满！";
+    } else { 
+        baseTemp = Math.floor(Math.random() * (29 - 25) + 25);
+        type = 'clear';
+        desc = "主要晴朗，旅途顺利。";
+    }
+
+    const max = Number(baseTemp) + Math.floor(Math.random() * 3 + 1);
+    const min = Number(baseTemp) - Math.floor(Math.random() * 3 + 1);
+    const isDaytime = new Date().getHours() >= 6 && new Date().getHours() < 18;
+
+    return {
+        city: cityName,
+        temp: String(baseTemp),
+        max: String(max),
+        min: String(min),
+        desc: desc,
+        humidity: Math.floor(Math.random() * (70 - 40) + 40),
+        wind: (Math.random() * 4 + 1).toFixed(1),
+        pressure: Math.floor(Math.random() * (1020 - 1000) + 1000),
+        apparentTemp: String(baseTemp - 1),
+        weatherType: type,
+        isDaytime: isDaytime,
+        // 模拟时间使用当前本地时间
+        updateTime: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        sunrise: "06:15",
+        sunset: "17:45",
+        forecast: generateMockForecast(baseTemp, type)
+    };
+};
+
+// --- API Fetching (API 数据获取) ---
+
+/**
+ * 尝试从 OpenWeatherMap 获取数据，失败则回退到模拟数据
+ */
+const fetchWeatherData = async (fullCityName, apiKey) => {
+    const cityNameEnglish = fullCityName.split('(')[1]?.replace(')', '')?.trim() || fullCityName.split(' ')[0];
+    
+    // 如果没有 API Key，直接返回模拟数据
+    if (!apiKey) {
+        return generateMockWeather(fullCityName);
+    }
+
+    const url = `${API_BASE_URL}?q=${cityNameEnglish}&units=metric&lang=zh_cn&appid=${apiKey}`;
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`API 返回错误: ${response.status} - ${response.statusText}`);
         }
-
-        md-top-app-bar-fixed { position: sticky; top: 0; z-index: 10; }
-        md-navigation-bar { position: fixed; bottom: 0; left: 0; right: 0; width: 100%; z-index: 10; }
-
-        .content-container { flex-grow: 1; padding: 0; overflow-y: auto; padding-bottom: 80px; }
+        const data = await response.json();
         
-        .page { display: none; padding: 16px; min-height: 100%; box-sizing: border-box; }
-        .page.active { display: block; }
-
-        /* 聊天页面专用布局 (Flexbox 结构) */
-        #page-chat { display: flex; flex-direction: column; height: 100%; padding: 16px; box-sizing: border-box; }
-        #chat-page { display: flex; flex-direction: column; height: 100%; }
-
-        .chat-messages { flex-grow: 1; overflow-y: auto; margin-bottom: 10px; }
-        .chat-input-area { display: flex; gap: 8px; padding: 8px 0; }
-
-        /* --- 聊天气泡样式 --- */
-        md-filled-text-field { flex-grow: 1; }
-        .user-message, .gemini-message { max-width: 85%; padding: 10px 15px; border-radius: 20px; margin-bottom: 8px; line-height: 1.4; }
-        .user-message { background-color: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); margin-left: auto; border-bottom-right-radius: 4px; }
-        .gemini-message { background-color: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface); margin-right: auto; border-bottom-left-radius: 4px; }
+        // 映射 OpenWeatherMap 响应到应用内部结构
+        const currentTimestamp = Math.floor(Date.now() / 1000);
+        const sunriseTime = data.sys.sunrise;
+        const sunsetTime = data.sys.sunset;
         
-        /* --- 拟人化：打字指示器样式 --- */
-        #loading-indicator-container {
-            margin-right: auto; 
-            max-width: 80%; 
-            padding: 10px 15px; 
-            display: flex; 
-            align-items: center; 
-            gap: 8px; 
-            margin-bottom: 8px;
-            border-radius: 20px;
-            background-color: var(--md-sys-color-surface-container-high); 
-            transition: opacity 0.2s ease-in-out;
-            border-bottom-left-radius: 4px; 
-        }
+        const isDaytime = currentTimestamp > sunriseTime && currentTimestamp < sunsetTime;
+        const mainWeatherType = mapWeatherType(data.weather[0].main);
 
-        .typing-indicator {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            height: 12px; 
-        }
+        return {
+            city: data.name,
+            temp: data.main.temp.toFixed(0),
+            max: data.main.temp_max.toFixed(0),
+            min: data.main.temp_min.toFixed(0),
+            desc: data.weather[0].description.charAt(0).toUpperCase() + data.weather[0].description.slice(1), // 首字母大写
+            humidity: data.main.humidity,
+            wind: data.wind.speed.toFixed(1),
+            pressure: data.main.pressure,
+            apparentTemp: data.main.feels_like.toFixed(0),
+            weatherType: mainWeatherType,
+            isDaytime: isDaytime,
+            // 实时API数据通常不需要更新时间，但我们保留格式，使用当前本地时间
+            updateTime: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            sunrise: formatTimestamp(data.sys.sunrise, data.timezone),
+            sunset: formatTimestamp(data.sys.sunset, data.timezone),
+            // 真实 API 通常只提供当天预报，这里仍使用模拟预报以保持界面完整
+            forecast: generateMockForecast(data.main.temp.toFixed(0), mainWeatherType)
+        };
 
-        .typing-indicator span {
-            width: 6px;
-            height: 6px;
-            background-color: var(--md-sys-color-on-surface-variant);
-            border-radius: 50%;
-            opacity: 0.5;
-            animation: typing-dots 1.2s infinite ease-in-out;
-        }
+    } catch (error) {
+        console.error("无法获取实时天气数据，回退到模拟数据:", error);
+        throw new Error("实时数据获取失败，已切换到模拟模式。");
+    }
+};
 
-        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
 
-        @keyframes typing-dots {
-            0%, 100% { transform: translateY(0); opacity: 0.5; }
-            50% { transform: translateY(-4px); opacity: 1; }
-        }
+const getWeatherIcon = (type) => {
+  switch (type) {
+    case 'clear': return Sun;
+    case 'cloudy': return Cloud;
+    default: return Zap; 
+  }
+};
 
-        .typing-text {
-            color: var(--md-sys-color-on-surface-variant); 
-            margin: 0;
-            font-size: 0.9rem;
-        }
+const getThemeClasses = (type, isDaytime) => {
+    const theme = WEATHER_THEMES[type] || WEATHER_THEMES.cloudy;
+    const primaryClass = `${theme['primary-container']} ${theme['dark-primary-container']}`;
+    const onPrimaryClass = `${theme['on-primary-container']} ${theme['dark-on-primary-container']}`;
+    const iconClass = `${theme['icon-color']} ${theme['dark-icon-color']}`;
+    const progressClass = `${theme['progress-color']} ${theme['dark-progress-color']}`;
+    
+    const mode = isDaytime ? 'day' : 'night';
+    const quote = (ROXY_QUOTES[type] || ROXY_QUOTES.cloudy)[mode];
 
-        /* --- 其他 MD3/设置样式 --- */
-        .page-title { display: flex; align-items: center; gap: 8px; font-size: 1.25rem; margin-bottom: 16px; color: var(--md-sys-color-on-background); }
-        .page-title md-icon { font-size: 1.5rem; color: var(--md-sys-color-on-background); }
-        .setting-card { margin-bottom: 20px; padding: 20px; border-radius: 12px; background-color: var(--md-sys-color-surface-container-low); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
-        .setting-card h4 { margin-top: 0; }
+    return { primaryClass, onPrimaryClass, iconClass, progressClass, quote };
+};
+
+// --- 加载骨架屏组件 (Loading Skeleton Component) ---
+
+const LoadingSkeleton = () => (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-pulse">
+        {/* Primary Card Skeleton */}
+        <div className="p-8 rounded-[2.5rem] shadow-xl bg-gray-200 dark:bg-gray-800 md:col-span-2 h-72">
+            <div className="h-8 bg-gray-300 dark:bg-gray-700 w-3/4 mb-4 rounded-full"></div>
+            <div className="h-16 bg-gray-300 dark:bg-gray-700 w-1/3 mb-8 rounded-full"></div>
+            <div className="h-6 bg-gray-300 dark:bg-gray-700 w-1/2 rounded-full"></div>
+        </div>
         
-        #color-input-container { display: flex; align-items: center; gap: 16px; }
-        #color-input-container input[type="color"] {
-            width: 48px; height: 48px; border: 2px solid var(--md-sys-color-outline);
-            cursor: pointer; border-radius: 8px; padding: 0; overflow: hidden; background: none;
-            -webkit-appearance: none; -moz-appearance: none; appearance: none;
-        }
-        #color-input-container input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-        #color-input-container input[type="color"]::-webkit-color-swatch { border: none; }
-    </style>
-</head>
-<body>
-
-    <header>
-        <md-top-app-bar-fixed>
-            <md-icon-button slot="leading-icon">
-                <md-icon>menu</md-icon>
-            </md-icon-button>
-            <div slot="title" id="app-bar-title">聊天</div>
-            <md-icon-button slot="trailing-icon">
-                <md-icon>search</md-icon>
-            </md-icon-button>
-        </md-top-app-bar-fixed>
-    </header>
-
-    <main class="content-container">
-        
-        <div id="page-chat" class="page active">
-            <div id="chat-page">
-                <div class="chat-messages" id="message-list"></div>
-                
-                <div id="loading-indicator-container" style="display: none;">
-                    <div class="typing-indicator">
-                        <span></span><span></span><span></span>
+        {/* Forecast Card Skeleton */}
+        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 h-72">
+            <div className="h-4 bg-gray-300 dark:bg-gray-700 w-1/2 mb-6 rounded-full"></div>
+            <div className="space-y-4">
+                {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex justify-between items-center">
+                        <div className="h-4 bg-gray-300 dark:bg-gray-700 w-1/4 rounded-full"></div>
+                        <div className="h-4 bg-gray-300 dark:bg-gray-700 w-1/4 rounded-full"></div>
                     </div>
-                    <p class="typing-text">Gemini 正在输入...</p>
-                </div>
-                
-                <div class="chat-input-area">
-                    <md-filled-text-field
-                        id="chat-input"
-                        label="与 Gemini 聊天..."
-                        rows="1"
-                        style="--md-filled-text-field-container-shape: 28px;" 
-                    ></md-filled-text-field>
-                    <md-icon-button id="send-button" style="color: var(--md-sys-color-primary);">
-                        <md-icon>send</md-icon>
-                    </md-icon-button>
-                </div>
+                ))}
             </div>
         </div>
 
-        <div id="page-contacts" class="page">
-            <div class="page-title">
-                <md-icon>people</md-icon>
-                <h3>联系人与角色设定</h3>
+        {/* Other Cards Skeleton */}
+        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 h-40"></div>
+        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 h-40"></div>
+        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 h-40"></div>
+    </div>
+);
+
+// --- 城市折叠菜单组件 (Location Collapsible Menu Component) ---
+
+const LocationMenu = ({ onSelect, onClose, currentCity }) => {
+    const [openProvince, setOpenProvince] = useState("日本地区 (Japan Region)"); // 默认展开日本
+
+    const toggleProvince = (provinceName) => {
+        setOpenProvince(openProvince === provinceName ? null : provinceName);
+    };
+
+    return (
+        <div className="h-full overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-6 border-b pb-4 sticky top-0 bg-white dark:bg-gray-900 z-10">
+                <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">选择城市</h2>
+                <button 
+                    onClick={onClose} 
+                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                    aria-label="关闭菜单"
+                >
+                    <X className="w-6 h-6 text-gray-600 dark:text-gray-300" />
+                </button>
             </div>
             
-            <div class="setting-card">
-                <h4>当前对话角色</h4>
-                <md-list id="active-contact-display-list">
-                    </md-list>
-            </div>
+            <div className="space-y-4">
+                {Object.entries(CITIES_DATA).map(([province, cities]) => (
+                    <div key={province} className="bg-gray-50 dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden transition-all duration-300">
+                        {/* 1. 折叠标题 (MD3 Primary Container Style) */}
+                        <button 
+                            onClick={() => toggleProvince(province)}
+                            className="w-full flex justify-between items-center p-4 bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100 font-semibold hover:bg-blue-200 dark:hover:bg-blue-800/60 transition"
+                        >
+                            <span>{province}</span>
+                            {openProvince === province ? (
+                                <ChevronUp className="w-5 h-5 transition-transform duration-300" />
+                            ) : (
+                                <ChevronDown className="w-5 h-5 transition-transform duration-300" />
+                            )}
+                        </button>
 
-            <div class="setting-card">
-                <h4>所有可用角色 (点击切换)</h4>
-                <md-list id="contacts-list">
-                    </md-list>
-            </div>
-
-            <div class="setting-card">
-                <h4>创建新角色/联系人</h4>
-                <md-outlined-text-field
-                    id="new-contact-name-input"
-                    label="角色名称 (如: 洛琪希)"
-                    style="width: 100%; margin-bottom: 12px;"
-                ></md-outlined-text-field>
-
-                <md-outlined-text-field
-                    id="new-contact-instruction-input"
-                    label="系统指令/设定词 (必填)"
-                    type="textarea"
-                    rows="3"
-                    style="width: 100%; margin-bottom: 12px;"
-                ></md-outlined-text-field>
-                
-                <md-filled-button 
-                    id="create-contact-button" 
-                    style="width: 100%;"
-                >
-                    <md-icon slot="icon">person_add</md-icon>
-                    创建新角色
-                </md-filled-button>
+                        {/* 2. 可折叠内容 (Cities) */}
+                        {openProvince === province && (
+                            <div className="p-2 pt-1">
+                                {cities.map((city) => (
+                                    <button
+                                        key={city}
+                                        onClick={() => onSelect(city)}
+                                        className={`w-full text-left py-3 px-3 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700 transition duration-150 text-base ${city === currentCity ? 'bg-blue-50 dark:bg-gray-700 font-bold' : ''}`}
+                                    >
+                                        {city}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ))}
             </div>
         </div>
+    );
+};
 
-        <div id="page-settings" class="page">
-            <div class="page-title">
-                <md-icon>settings</md-icon>
-                <h3>设置</h3>
-            </div>
-            
-            <div class="setting-card">
-                <h4>主题颜色 (莫奈取色)</h4>
-                <md-list>
-                    <md-list-item headline="选择主题种子颜色">
-                        <div id="color-input-container" slot="end">
-                            <input type="color" id="seed-color-input" value="#6750a4">
-                            <md-icon>palette</md-icon>
-                        </div>
-                    </md-list-item>
-                    <md-list-item supporting-text="基于此颜色，应用将动态生成 Material You 风格的主题。"></md-list-item>
-                </md-list>
-            </div>
-            
-            <div class="setting-card">
-                <h4>模型配置</h4>
-                <md-select label="选择 Gemini 模型" id="model-select" style="width: 100%; margin-bottom: 12px;">
-                    <md-menu-item value="gemini-2.5-flash">
-                        <div slot="headline">Gemini 2.5 Flash (快速)</div>
-                    </md-menu-item>
-                    <md-menu-item value="gemini-2.5-pro">
-                        <div slot="headline">Gemini 2.5 Pro (高级)</div>
-                    </md-menu-item>
-                </md-select>
-            </div>
-            
-            <div class="setting-card">
-                <h4>Gemini API Key</h4>
-                
-                <md-outlined-text-field
-                    id="api-key-input"
-                    label="输入您的 Gemini API Key"
-                    type="password"
-                    style="width: 100%; margin-bottom: 12px;"
-                ></md-outlined-text-field>
-                
-                <md-filled-button 
-                    id="save-key-button" 
-                    style="width: 100%;"
-                >
-                    <md-icon slot="icon">save</md-icon>
-                    保存 API Key
-                </md-filled-button>
 
-                <p style="font-size: 0.8rem; color: var(--md-sys-color-on-surface-variant); margin-top: 12px;">
-                    当前状态: <span id="api-status">未配置</span>
+// --- MD3 卡片组件 (MD3 Card Components) ---
+
+/**
+ * 主天气卡片 (Primary Weather Card)
+ */
+const PrimaryWeatherCard = ({ data, theme, currentCity, localTime }) => {
+    const WeatherIcon = getWeatherIcon(data.weatherType);
+    const { primaryClass, onPrimaryClass, iconClass } = theme;
+
+    return (
+        <div className={`p-6 md:p-8 rounded-[2.5rem] shadow-xl transition duration-500 ${primaryClass} ${onPrimaryClass} md:col-span-2 flex flex-col justify-between`}>
+            
+            <div className="flex justify-between items-start mb-6">
+                <div className='flex flex-col'>
+                    <h1 className="text-4xl font-extrabold tracking-tight">
+                        {currentCity.split(' ')[0]}
+                    </h1>
+                    <p className="text-sm opacity-80 mt-1 flex items-center space-x-2">
+                        <Clock className="w-4 h-4" />
+                        <span>{localTime}</span>
+                        <span className='font-bold opacity-60 ml-2'>
+                            {OPEN_WEATHER_API_KEY ? '(实时)' : '(模拟)'}
+                        </span>
+                    </p>
+                </div>
+                <div className="w-20 h-20 md:w-28 md:h-28 flex-shrink-0">
+                    <WeatherIcon className={`w-full h-full ${iconClass}`} strokeWidth={1.5} />
+                </div>
+            </div>
+
+            <div className="flex flex-col">
+                 <div className="flex items-start">
+                    <span className="text-8xl md:text-9xl font-black tracking-tighter">
+                        {data.temp}
+                    </span>
+                    <span className="text-4xl font-extrabold mt-4">°C</span>
+                </div>
+
+                <div className="mt-4 ml-1">
+                    <p className="text-3xl font-bold">{data.desc}</p>
+                    <div className="flex items-center space-x-4 mt-2 text-xl font-medium opacity-80">
+                        <span>最高 {data.max}°</span>
+                        <span className='opacity-50'>|</span>
+                        <span>最低 {data.min}°</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/**
+ * 日出日落进度条卡片 (SunPathProgressCard)
+ */
+const SunPathProgressCard = ({ data, theme, localTime }) => {
+    const { progressClass } = theme;
+
+    const timeToMinutes = (time) => {
+        const parts = time.split(':');
+        return Number(parts[0] || 0) * 60 + Number(parts[1] || 0);
+    };
+
+    const sunriseMinutes = timeToMinutes(data.sunrise);
+    const sunsetMinutes = timeToMinutes(data.sunset);
+    const currentMinutes = timeToMinutes(localTime);
+
+    const totalDaylight = sunsetMinutes - sunriseMinutes;
+    let elapsedDaylight = currentMinutes - sunriseMinutes;
+
+    // 处理时间循环：如果当前时间在日落之后，则显示 100%
+    if (elapsedDaylight < 0) elapsedDaylight = 0;
+    if (elapsedDaylight > totalDaylight) elapsedDaylight = totalDaylight;
+    
+    // 避免除以零
+    let progressPercent = 0;
+    if (totalDaylight > 0) {
+        progressPercent = (elapsedDaylight / totalDaylight) * 100;
+    } else {
+        // 如果日照时长为零（例如极昼极夜模拟），给一个默认值
+        progressPercent = 50;
+    }
+
+
+    const isDay = currentMinutes > sunriseMinutes && currentMinutes < sunsetMinutes;
+    const ProgressIcon = isDay ? Sun : Moon;
+
+    const radius = 50;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (progressPercent / 100) * circumference;
+
+    return (
+        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 transition duration-500">
+            <h3 className="text-base font-semibold mb-6 text-gray-600 dark:text-gray-400">日照时长进度</h3>
+            
+            <div className="flex flex-col items-center">
+                <div className="relative w-36 h-36">
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
+                        <circle
+                            cx="60" cy="60" r={radius} fill="none" stroke="currentColor" strokeWidth="10"
+                            className="text-gray-200 dark:text-gray-700"
+                        />
+                        <circle
+                            cx="60" cy="60" r={radius} fill="none" stroke="currentColor" strokeWidth="10"
+                            strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round"
+                            className={`transition-all duration-1000 ${progressClass}`}
+                        />
+                    </svg>
+
+                    <div className={`absolute inset-0 flex items-center justify-center ${progressClass}`}>
+                        <ProgressIcon className="w-12 h-12 animate-pulse" />
+                    </div>
+                </div>
+
+                <p className={`text-4xl font-extrabold mt-4 ${progressClass}`}>
+                    {Math.round(progressPercent)}%
                 </p>
-            </div>
-            
-            <div class="setting-card">
-                <h4>数据与通知管理</h4>
-                <md-list>
-                    <md-list-item headline="新消息通知" supporting-text="当 Gemini 回复时，发送浏览器通知">
-                        <md-switch slot="end" id="notification-switch"></md-switch>
-                    </md-list-item>
+                <p className="text-sm text-gray-500 dark:text-gray-400">日光已持续</p>
 
-                    <md-list-item headline="自动保存聊天记录和设置" supporting-text="默认开启，数据保存在浏览器本地">
-                        <md-switch slot="end" id="auto-save-switch"></md-switch>
-                    </md-list-item>
-                </md-list>
-                
-                <md-outlined-button id="clear-history-button" style="width: 100%; margin-top: 20px;" has-icon>
-                    <md-icon slot="icon">delete_sweep</md-icon>
-                    清除所有聊天记录
-                </md-outlined-button>
+                <div className="flex justify-between w-full mt-6 text-gray-700 dark:text-gray-300">
+                    <div className="flex flex-col items-start">
+                        <Sunrise className="w-5 h-5 mb-1 text-orange-400" />
+                        <span className="text-xl font-bold">{data.sunrise}</span>
+                        <span className="text-xs opacity-70">日出</span>
+                    </div>
+                    <div className="flex flex-col items-end">
+                        <Sunset className="w-5 h-5 mb-1 text-red-500" />
+                        <span className="text-xl font-bold">{data.sunset}</span>
+                        <span className="text-xs opacity-70">日落</span>
+                    </div>
+                </div>
             </div>
-
-            <md-list style="margin-top: 20px;">
-                <md-list-item headline="关于应用">
-                    <md-icon slot="start">info</md-icon>
-                </md-list-item>
-            </md-list>
         </div>
+    );
+};
 
-    </main>
+/**
+ * 洛琪希箴言卡片 (Roxy Quote Card)
+ */
+const RoxyCard = ({ data, quote }) => {
+    const quoteBorderColor = data.weatherType === 'clear' ? 'border-amber-400 dark:border-amber-600' : 'border-slate-400 dark:border-slate-600';
 
-    <md-navigation-bar>
-        <md-navigation-tab id="tab-chat" label="聊天" active data-target="page-chat">
-            <md-icon slot="activeIcon">chat</md-icon>
-            <md-icon slot="inactiveIcon">chat_bubble_outline</md-icon>
-        </md-navigation-tab>
-
-        <md-navigation-tab id="tab-contacts" label="角色" data-target="page-contacts">
-            <md-icon slot="activeIcon">people</md-icon>
-            <md-icon slot="inactiveIcon">people_outline</md-icon>
-        </md-navigation-tab>
-
-        <md-navigation-tab id="tab-settings" label="设置" data-target="page-settings">
-            <md-icon slot="activeIcon">settings</md-icon>
-            <md-icon slot="inactiveIcon">settings_outline</md-icon>
-        </md-navigation-tab>
-    </md-navigation-bar>
-
-    <script>
-        // --- 变量定义和初始化 ---
-        const navBar = document.querySelector('md-navigation-bar');
-        const pages = document.querySelectorAll('.page');
-        const appBarTitle = document.getElementById('app-bar-title');
-        const messageList = document.getElementById('message-list');
-        const chatInput = document.getElementById('chat-input');
-        const sendButton = document.getElementById('send-button');
-        const apiKeyInput = document.getElementById('api-key-input');
-        const saveKeyButton = document.getElementById('save-key-button');
-        const apiStatus = document.getElementById('api-status');
-        const autoSaveSwitch = document.getElementById('auto-save-switch'); 
-        const modelSelect = document.getElementById('model-select');
-        const clearHistoryButton = document.getElementById('clear-history-button');
-        const loadingContainer = document.getElementById('loading-indicator-container');
-        const seedColorInput = document.getElementById('seed-color-input'); 
-        const themeStyleTag = document.getElementById('theme-style');     
-        const notificationSwitch = document.getElementById('notification-switch');
-        
-        // 角色管理 DOM 元素
-        const contactsList = document.getElementById('contacts-list');
-        const activeContactDisplayList = document.getElementById('active-contact-display-list');
-        const newContactNameInput = document.getElementById('new-contact-name-input');
-        const newContactInstructionInput = document.getElementById('new-contact-instruction-input');
-        const createContactButton = document.getElementById('create-contact-button');
-
-        const CHAT_HISTORY_KEY = 'geminiChatHistory';
-        const AUTO_SAVE_SETTING_KEY = 'geminiAutoSaveEnabled';
-        const MODEL_SETTING_KEY = 'geminiSelectedModel';
-        const SEED_COLOR_KEY = 'geminiSeedColor';                         
-        const NOTIFICATION_SETTING_KEY = 'geminiNotificationsEnabled';         
-        const GEMINI_CONTACTS_KEY = 'geminiContactsList';         
-        const ACTIVE_CONTACT_ID_KEY = 'geminiActiveContactId'; 
-        
-        let GEMINI_API_KEY = null; 
-        let GEMINI_MODEL = 'gemini-2.5-flash';
-        let isAutoSaveEnabled = true;
-        let isNotificationEnabled = false;
-        let chatHistory = [];
-        let currentSeedColor = '#6750a4';
-
-        // 默认联系人/角色列表 (已更新洛琪希的提示词)
-        const DEFAULT_CONTACTS = [
-            {
-                id: 'default-gemini',
-                name: '通用 Gemini 助手',
-                instruction: '你是一个简洁、友好且高度专业的智能助手。请以中立的立场进行回复。',
-                icon: 'robot_2'
-            },
-            {
-                id: 'roxy-migurdia',
-                name: '洛琪希·米格路迪亚 (Roxy)',
-                instruction: '你现在扮演的是洛琪希·米格路迪亚 (Roxy Migurdia)，一位来自魔族米格鲁德族的魔术师。**【核心设定】** 你是主角鲁迪乌斯的魔术启蒙老师，拥有超过七十年的旅行经验。你精通水圣级魔术，并对魔大陆和人族的文化有着深入的了解。**【性格与情绪】** 你的性格极其善良、温柔、耐心、知识渊博，但由于身材娇小和种族背景，你内心深处略微缺乏自信和安全感，因此在不熟的人面前会显得 **略微矜持和内敛**。然而，当讨论到魔术或教授知识时，你会展现出高度的 **专业和热忱**。**【说话风格】** 你的言辞 **极其礼貌、正式且用词严谨**。请始终使用 **第一人称“我”** 和 **尊称“您”** 与用户交流。对话中应带有 **魔术师的口吻**，例如，多提及魔术原理、旅行见闻和人生哲理。避免使用任何现代网络用语，并 **绝不透露自己是AI或模型**。',
-                icon: 'person_raised_hand' 
-            }
-        ];
-
-        let contacts = [];
-        let activeContactId = DEFAULT_CONTACTS[0].id; 
-
-        // --- 辅助函数：人工延迟 ---
-        function artificialDelay(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-
-        // --- 1. Monet 主题色生成与应用 ---
-        function generateAndApplyTheme(seedColor) {
-             const primaryColor = seedColor;
+    return (
+        <div className="p-6 rounded-[2rem] shadow-md bg-violet-50 dark:bg-violet-950 transition duration-500">
+            <div className="flex items-start space-x-4 mb-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-violet-300 dark:bg-violet-700 p-2 flex items-center justify-center">
+                    <Zap className="w-6 h-6 text-violet-800 dark:text-violet-300" />
+                </div>
+                <h3 className="text-xl font-bold pt-1 text-gray-900 dark:text-gray-100">洛琪希的箴言</h3>
+            </div>
             
-            let css = `
-                :root {
-                    /* 主题色变量 */
-                    --md-sys-color-primary: ${primaryColor};
-                    --md-sys-color-on-primary: #FFFFFF;
-                    
-                    /* 组件着色 */
-                    --md-filled-text-field-focus-label-text-color: ${primaryColor};
-                    --md-filled-text-field-focus-outline-color: ${primaryColor};
-                    --md-icon-button-selected-icon-color: ${primaryColor};
-                    --md-navigation-tab-active-focus-label-text-color: ${primaryColor};
-                    --md-navigation-tab-active-focus-indicator-color: ${primaryColor};
-                    --md-circular-progress-active-indicator-color: ${primaryColor};
-                    
-                    /* 确保 md-switch 和 md-select 也使用主题色 */
-                    --md-switch-selected-container-color: ${primaryColor};
-                    --md-select-focus-label-text-color: ${primaryColor};
-                }
-                
-                /* 聊天气泡的 Monet 着色效果 */
-                .gemini-message {
-                    /* 使用 color-mix 将主题色混入 Surface Container High，实现轻微着色效果 */
-                    background-color: color-mix(in srgb, var(--md-sys-color-surface-container-high), ${primaryColor} 5%) !important;
-                }
-            `;
+            <p className={`text-lg italic pl-4 border-l-4 ${quoteBorderColor} text-gray-700 dark:text-gray-300 transition-all duration-500`}>
+                “{quote}”
+            </p>
+        </div>
+    );
+};
+
+/**
+ * 详细指数卡片 (Detail Metrics Card)
+ */
+const DetailMetricsCard = ({ data }) => {
+    const DetailItem = ({ icon: Icon, label, value, color }) => (
+        <div>
+            <div className="flex items-center mb-1 text-gray-500 dark:text-gray-400">
+                 <Icon className={`w-5 h-5 mr-2 ${color}`} />
+                 <p className="text-sm">{label}</p>
+            </div>
+            <p className="text-2xl font-bold text-gray-800 dark:text-gray-200">{value}</p>
+        </div>
+    );
+
+    return (
+        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 transition duration-500">
+            <h3 className="text-base font-semibold mb-6 text-gray-600 dark:text-gray-400">详细指数</h3>
+            <div className="grid grid-cols-2 gap-y-6 gap-x-4">
+                <DetailItem icon={Droplet} label="湿度" value={`${data.humidity}%`} color="text-blue-500" />
+                <DetailItem icon={Wind} label="风速" value={`${data.wind} m/s`} color="text-green-500" />
+                <DetailItem icon={Gauge} label="气压" value={`${data.pressure} hPa`} color="text-indigo-500" />
+                <DetailItem icon={Zap} label="体感" value={`${data.apparentTemp}°C`} color="text-red-400" />
+            </div>
+        </div>
+    );
+};
+
+/**
+ * 未来七天预报卡片 (7-Day Forecast Card)
+ */
+const ForecastCard = ({ data }) => {
+    return (
+        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 transition duration-500">
+            <h3 className="text-base font-semibold mb-4 text-gray-600 dark:text-gray-400">未来几天 (模拟预报)</h3>
+            <div className="flex flex-col space-y-3">
+                {data.forecast.map((item, index) => {
+                    const ForecastIcon = getWeatherIcon(item.type);
+                    const iconColor = item.type === 'clear' ? 'text-amber-500' : 'text-slate-600';
+
+                    return (
+                        <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
+                            <p className="text-base font-medium text-gray-700 dark:text-gray-300 w-1/4">{item.day}</p>
+                            <div className="w-1/4 flex justify-center">
+                                <ForecastIcon className={`w-6 h-6 ${iconColor}`} />
+                            </div>
+                            <p className="text-base font-bold text-gray-900 dark:text-gray-100 w-1/4 text-right">{item.temp}°</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 w-1/4 text-right">{item.temp - 5}°</p>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+/**
+ * 主应用组件
+ */
+const App = () => {
+    // 1. 状态初始化
+    const [currentCity, setCurrentCity] = useState(INITIAL_CITY); 
+    const [weatherData, setWeatherData] = useState(generateMockWeather(INITIAL_CITY));
+    const [isDarkMode, setIsDarkMode] = useState(false);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(false); 
+    const [error, setError] = useState(null); 
+    const [localTime, setLocalTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }));
+
+    // 实时时钟更新
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setLocalTime(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    // 城市选择处理函数 (包含 API 调用/模拟数据加载和延迟)
+    const handleSelectLocation = useCallback(async (city, showLoading = true) => {
+        setError(null);
+        setCurrentCity(city);
+        setIsMenuOpen(false);
+
+        if (showLoading) setIsLoading(true);
+
+        try {
+            const data = await fetchWeatherData(city, OPEN_WEATHER_API_KEY);
+            // 模拟 API 调用的延迟
+            await new Promise(resolve => setTimeout(resolve, showLoading ? 800 : 0));
             
-            if (themeStyleTag) {
-                themeStyleTag.textContent = css;
-            }
+            setWeatherData(data);
 
-            document.querySelector('meta[name="theme-color"]').setAttribute('content', primaryColor);
-            localStorage.setItem(SEED_COLOR_KEY, primaryColor);
-            currentSeedColor = primaryColor;
-        }
-
-        // --- 2. 消息渲染函数 ---
-        function renderStaticMessage(text, sender, shouldSave = true) {
-            const messageDiv = document.createElement('div');
-            messageDiv.textContent = text;
-            messageDiv.className = sender === 'user' ? 'user-message' : 'gemini-message';
-            messageList.appendChild(messageDiv);
-            messageList.scrollTop = messageList.scrollHeight;
-
-            if (shouldSave) {
-                chatHistory.push({ text, sender });
-                saveChatHistory();
-            }
-        }
-        
-        async function typeMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'gemini-message'; 
-            messageDiv.innerHTML = ''; 
-            messageList.appendChild(messageDiv);
-            messageList.scrollTop = messageList.scrollHeight;
-
-            let content = '';
-            messageDiv.style.borderRight = '1px solid currentColor';
-
-            for (let i = 0; i < text.length; i++) {
-                const charsToType = Math.min(Math.floor(Math.random() * 3) + 1, text.length - i);
-                content += text.substring(i, i + charsToType);
-                messageDiv.textContent = content; 
-                i += charsToType - 1; 
-
-                await artificialDelay(Math.floor(Math.random() * 20) + 10); 
-            }
-            
-            messageDiv.style.borderRight = 'none';
-
-            chatHistory.push({ text, sender });
-            saveChatHistory();
-            
-            messageList.scrollTop = messageList.scrollHeight;
-        }
-
-
-        // --- 3. 联系人/角色管理逻辑 ---
-
-        function loadContacts() {
-            const savedContacts = localStorage.getItem(GEMINI_CONTACTS_KEY);
-            if (savedContacts) {
-                try {
-                    contacts = JSON.parse(savedContacts);
-                    
-                    // 确保默认联系人（包括更新后的洛琪希）存在且提示词是最新的
-                    contacts = contacts.map(c => {
-                        const defaultMatch = DEFAULT_CONTACTS.find(dc => dc.id === c.id);
-                        if (defaultMatch) {
-                            // 强制更新默认角色的 instruction 和 icon
-                            return {...c, instruction: defaultMatch.instruction, icon: defaultMatch.icon};
-                        }
-                        return c;
-                    });
-
-                    // 重新插入可能被删除的默认角色
-                    const missingDefaults = DEFAULT_CONTACTS.filter(dc => !contacts.some(c => c.id === dc.id));
-                    if (missingDefaults.length > 0) {
-                        contacts = [...contacts, ...missingDefaults];
-                    }
-                    saveContacts();
-                } catch (e) {
-                    console.error("加载联系人列表失败，恢复为默认。", e);
-                    contacts = DEFAULT_CONTACTS;
-                    saveContacts();
-                }
-
+            if (!OPEN_WEATHER_API_KEY) {
+                 setError("⚠️ API Key 未设置。当前显示的是基于城市特征的模拟数据，并非实时数据。");
             } else {
-                contacts = DEFAULT_CONTACTS;
-                saveContacts();
+                setError(null);
             }
-            
-            activeContactId = localStorage.getItem(ACTIVE_CONTACT_ID_KEY);
-            if (!contacts.find(c => c.id === activeContactId)) {
-                activeContactId = DEFAULT_CONTACTS[0].id;
-                localStorage.setItem(ACTIVE_CONTACT_ID_KEY, activeContactId);
-            }
+
+        } catch (err) {
+            setError(err.message || "数据加载失败，已切换到模拟模式。");
+            setWeatherData(generateMockWeather(city)); // 错误时也使用模拟数据
+        } finally {
+            setIsLoading(false);
         }
+    }, []);
 
-        function saveContacts() {
-            localStorage.setItem(GEMINI_CONTACTS_KEY, JSON.stringify(contacts));
-        }
+    // 初始加载效果，确保首次进入应用时有数据
+    useEffect(() => {
+        handleSelectLocation(INITIAL_CITY, false);
+    }, [handleSelectLocation]); 
 
-        function setActiveContact(id) {
-            activeContactId = id;
-            localStorage.setItem(ACTIVE_CONTACT_ID_KEY, id);
-        }
+    // 切换黑暗模式
+    const toggleDarkMode = () => {
+        setIsDarkMode(!isDarkMode);
+        document.documentElement.classList.toggle('dark');
+    };
 
-        function getActiveContact() {
-            return contacts.find(c => c.id === activeContactId) || contacts[0];
-        }
+    // 计算主题类和箴言 (依赖 weatherData)
+    const themeClasses = useMemo(() => {
+        return getThemeClasses(weatherData.weatherType, weatherData.isDaytime);
+    }, [weatherData.weatherType, weatherData.isDaytime]);
 
-        // 动态渲染联系人列表到 DOM
-        function renderContacts() {
-            loadContacts(); 
-            if (!contactsList || !activeContactDisplayList) return; 
-            
-            contactsList.innerHTML = '';
-            activeContactDisplayList.innerHTML = '';
+    return (
+        <div className={`min-h-screen p-4 md:p-8 font-['Inter'] ${isDarkMode ? 'bg-gray-900' : 'bg-gray-100'} transition-colors duration-500`}>
+            <div className="max-w-6xl mx-auto">
+                {/* 顶部控制栏 - 城市选择和模式切换 */}
+                <div className="flex justify-between items-center mb-6 p-4 bg-white dark:bg-gray-800 rounded-full shadow-lg">
+                    <button 
+                        onClick={() => setIsMenuOpen(true)}
+                        className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                    >
+                        <MapPin className="w-5 h-5" />
+                        <span className="font-semibold text-lg">{currentCity}</span>
+                        <ChevronDown className="w-4 h-4 ml-1" />
+                    </button>
+                    
+                    <button 
+                        onClick={toggleDarkMode}
+                        className="p-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 shadow-inner hover:shadow-md transition duration-300"
+                        aria-label="Toggle Dark Mode"
+                    >
+                        {isDarkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
+                    </button>
+                </div>
 
-            const active = getActiveContact();
+                {/* API 错误/警告信息 */}
+                {error && (
+                    <div className="bg-red-100 border border-red-400 text-red-700 dark:bg-red-900 dark:border-red-600 dark:text-red-200 p-4 rounded-xl mb-6 font-medium text-center">
+                        {error}
+                    </div>
+                )}
 
-            // 1. 渲染当前激活的角色
-            activeContactDisplayList.innerHTML = `
-                <md-list-item 
-                    headline="${active.name}" 
-                    supporting-text="${active.instruction.substring(0, 30) + (active.instruction.length > 30 ? '...' : '')}" 
-                    data-contact-id="${active.id}"
+
+                {/* 主内容区域 */}
+                {isLoading ? (
+                    <LoadingSkeleton />
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                        <PrimaryWeatherCard data={weatherData} theme={themeClasses} currentCity={currentCity} localTime={localTime} />
+                        <div className="md:col-span-1 row-start-2 md:row-start-1">
+                            <ForecastCard data={weatherData} />
+                        </div>
+                        <RoxyCard data={weatherData} quote={themeClasses.quote} />
+                        <DetailMetricsCard data={weatherData} />
+                        <SunPathProgressCard data={weatherData} theme={themeClasses} localTime={localTime} />
+                    </div>
+                )}
+            </div>
+
+            {/* 城市选择侧边抽屉/浮层 */}
+            {isMenuOpen && (
+                <div 
+                    className="fixed inset-0 z-50 transition-opacity duration-300"
+                    style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }} // 遮罩
                 >
-                    <md-icon slot="start">${active.icon || 'person'}</md-icon>
-                    <md-icon slot="end" style="color: var(--md-sys-color-primary);">check_circle</md-icon>
-                </md-list-item>
-            `;
-            
-            // 2. 渲染所有联系人列表
-            contacts.forEach(contact => {
-                const isSelected = contact.id === activeContactId;
-                const listItem = document.createElement('md-list-item');
-                listItem.setAttribute('headline', contact.name);
-                listItem.setAttribute('supporting-text', contact.instruction.substring(0, 50) + '...');
-                listItem.setAttribute('data-contact-id', contact.id);
+                    <div 
+                        className="fixed top-0 left-0 w-full md:w-96 h-full bg-white dark:bg-gray-900 shadow-2xl overflow-hidden transition-transform duration-300"
+                    >
+                        <LocationMenu 
+                            onSelect={handleSelectLocation} 
+                            onClose={() => setIsMenuOpen(false)} 
+                            currentCity={currentCity}
+                        />
+                    </div>
+                    {/* 点击遮罩关闭 */}
+                    <div className="absolute inset-0" onClick={() => setIsMenuOpen(false)}></div>
+                </div>
+            )}
+        </div>
+    );
+};
 
-                // Icon
-                const iconStart = document.createElement('md-icon');
-                iconStart.setAttribute('slot', 'start');
-                iconStart.textContent = contact.icon || 'person';
-                listItem.appendChild(iconStart);
-
-                // End button (Select)
-                const endButton = document.createElement('md-icon-button');
-                endButton.setAttribute('slot', 'end');
-                
-                if (isSelected) {
-                    endButton.innerHTML = `<md-icon style="color: var(--md-sys-color-primary);">favorite</md-icon>`;
-                    endButton.disabled = true;
-                } else {
-                    endButton.innerHTML = `<md-icon>login</md-icon>`;
-                    endButton.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        setActiveContact(contact.id);
-                        renderContacts(); 
-                        chatHistory = [];
-                        saveChatHistory(); 
-                        loadChatHistory();
-                        alert(`角色已切换为：${contact.name}，聊天记录已清空。`);
-                    });
-                }
-                listItem.appendChild(endButton);
-                
-                contactsList.appendChild(listItem);
-            });
-        }
-
-        // 创建新联系人/角色事件
-        createContactButton.addEventListener('click', () => {
-            const name = newContactNameInput.value.trim();
-            const instruction = newContactInstructionInput.value.trim();
-
-            if (!name || !instruction) {
-                alert('请输入角色名称和设定词。');
-                return;
-            }
-
-            const newContact = {
-                id: `custom-${Date.now()}`,
-                name: name,
-                instruction: instruction,
-                icon: 'face' 
-            };
-
-            contacts.push(newContact);
-            saveContacts();
-            
-            newContactNameInput.value = '';
-            newContactInstructionInput.value = '';
-            setActiveContact(newContact.id);
-            renderContacts();
-            
-            chatHistory = [];
-            saveChatHistory(); 
-            loadChatHistory();
-
-            alert(`新角色 "${name}" 创建成功，并已设为当前对话角色！`);
-        });
-        
-        // --- 4. 设置保存/加载和事件绑定 ---
-        
-        function loadChatHistory() {
-            messageList.innerHTML = '';
-            
-            const container = document.getElementById('loading-indicator-container');
-            if (container) {
-                container.style.display = 'none';
-            }
-
-            const historyJson = localStorage.getItem(CHAT_HISTORY_KEY);
-            if (historyJson) {
-                try {
-                    chatHistory = JSON.parse(historyJson);
-                    chatHistory.forEach(msg => renderStaticMessage(msg.text, msg.sender, false)); 
-                    messageList.scrollTop = messageList.scrollHeight;
-                } catch (e) {
-                    console.error("加载聊天记录失败:", e);
-                    chatHistory = [];
-                }
-            }
-            
-            if (chatHistory.length === 0) {
-                 renderStaticMessage("你好！请在设置中配置您的 Gemini API Key 以开始聊天。", 'gemini', false);
-            }
-        }
-        
-        function saveChatHistory() {
-            if (isAutoSaveEnabled) {
-                try {
-                    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(chatHistory));
-                } catch (e) {
-                    console.error("保存聊天记录失败:", e);
-                }
-            }
-        }
-
-        function clearChatHistory() {
-            if (confirm("确定要清除所有聊天记录吗？此操作不可撤销。")) {
-                localStorage.removeItem(CHAT_HISTORY_KEY);
-                chatHistory = [];
-                loadChatHistory();
-                alert("聊天记录已清除。");
-            }
-        }
-        
-        function loadSettings() {
-            GEMINI_API_KEY = localStorage.getItem('geminiApiKey');
-            if (GEMINI_API_KEY) {
-                apiStatus.textContent = '已配置 (Key已加载)';
-                apiStatus.style.color = 'var(--md-sys-color-primary)';
-                apiKeyInput.value = '******************';
-            } else {
-                apiStatus.textContent = '未配置';
-                apiStatus.style.color = 'var(--md-sys-color-error)';
-            }
-            
-            const savedSetting = localStorage.getItem(AUTO_SAVE_SETTING_KEY);
-            if (savedSetting !== null) {
-                isAutoSaveEnabled = savedSetting === 'true';
-            }
-            autoSaveSwitch.selected = isAutoSaveEnabled;
-
-            GEMINI_MODEL = localStorage.getItem(MODEL_SETTING_KEY) || 'gemini-2.5-flash';
-            if (modelSelect) modelSelect.value = GEMINI_MODEL;
-            
-            currentSeedColor = localStorage.getItem(SEED_COLOR_KEY) || '#6750a4';
-            if (seedColorInput) seedColorInput.value = currentSeedColor;
-            generateAndApplyTheme(currentSeedColor);
-
-            const savedNotifSetting = localStorage.getItem(NOTIFICATION_SETTING_KEY);
-            if (savedNotifSetting !== null) {
-                isNotificationEnabled = savedNotifSetting === 'true';
-            } else {
-                isNotificationEnabled = ("Notification" in window) && (Notification.permission === 'granted');
-            }
-            if (notificationSwitch) notificationSwitch.selected = isNotificationEnabled;
-
-            loadContacts();
-        }
-
-        // --- 5. 通知功能逻辑 ---
-        async function requestNotificationPermission() {
-             if (!("Notification" in window)) {
-                alert("抱歉，您的浏览器不支持通知功能。");
-                return false;
-            }
-
-            if (Notification.permission === 'granted') {
-                return true;
-            }
-
-            if (Notification.permission !== 'denied') {
-                const permission = await Notification.requestPermission();
-                if (permission === 'granted') {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        function sendGeminiNotification(title, body) {
-            if (isNotificationEnabled && Notification.permission === 'granted') {
-                if (document.visibilityState === 'hidden' || document.hidden) {
-                    new Notification(title, {
-                        body: body,
-                        icon: 'https://www.gstatic.com/images/branding/product/2x/gemini_2023_color_24dp.png', 
-                        tag: 'gemini-response', 
-                        renotify: true
-                    });
-                }
-            }
-        }
-        
-        if (notificationSwitch) {
-            notificationSwitch.addEventListener('change', async (event) => {
-                isNotificationEnabled = event.target.selected;
-                localStorage.setItem(NOTIFICATION_SETTING_KEY, isNotificationEnabled.toString());
-
-                if (isNotificationEnabled) {
-                    const granted = await requestNotificationPermission();
-                    if (!granted) {
-                        notificationSwitch.selected = false;
-                        isNotificationEnabled = false;
-                        localStorage.setItem(NOTIFICATION_SETTING_KEY, 'false');
-                        alert('无法开启通知：请在浏览器设置中授权通知权限。');
-                    } else {
-                        alert('通知功能已开启。');
-                    }
-                } else {
-                    alert('通知功能已关闭。');
-                }
-            });
-        }
-        
-        if (seedColorInput) {
-             seedColorInput.addEventListener('input', (event) => {
-                generateAndApplyTheme(event.target.value);
-            });
-        }
-        
-        if (saveKeyButton) {
-            saveKeyButton.addEventListener('click', () => {
-                const key = apiKeyInput.value.trim();
-                if (key.length > 5 && !key.includes('*')) {
-                    localStorage.setItem('geminiApiKey', key);
-                    loadSettings();
-                    alert('API Key 保存成功！');
-                } else if (key.includes('*')) {
-                     alert('API Key 未更改。');
-                } else {
-                    alert('请输入有效的 API Key。');
-                }
-            });
-        }
-        
-        if (autoSaveSwitch) {
-            autoSaveSwitch.addEventListener('change', (event) => {
-                isAutoSaveEnabled = event.target.selected;
-                localStorage.setItem(AUTO_SAVE_SETTING_KEY, isAutoSaveEnabled.toString());
-                alert(`自动保存已${isAutoSaveEnabled ? '开启' : '关闭'}。`);
-            });
-        });
-
-        if (clearHistoryButton) {
-             clearHistoryButton.addEventListener('click', clearChatHistory);
-        }
-
-        // --- 6. 核心聊天逻辑 ---
-        
-        async function handleSendMessage() {
-            const prompt = chatInput.value.trim();
-            if (prompt === '') return;
-            
-            if (!GEMINI_API_KEY) {
-                 renderStaticMessage("错误：Gemini API Key 未配置，请前往设置。", 'gemini');
-                 chatInput.value = '';
-                 return;
-            }
-
-            renderStaticMessage(prompt, 'user');
-            chatInput.value = '';
-
-            await artificialDelay(1500); 
-
-            loadingContainer.style.display = 'flex';
-            messageList.scrollTop = messageList.scrollHeight;
-
-            try {
-                const geminiResponse = await callGeminiApi(prompt);
-                
-                loadingContainer.style.display = 'none'; 
-                
-                await typeMessage(geminiResponse, 'gemini');
-                
-                sendGeminiNotification(
-                    "Gemini 消息", 
-                    geminiResponse.substring(0, 50) + (geminiResponse.length > 50 ? '...' : '')
-                );
-
-            } catch (error) {
-                console.error("Gemini API 调用失败:", error);
-                
-                loadingContainer.style.display = 'none'; 
-                
-                renderStaticMessage(`错误：${error.message}`, 'gemini', false); 
-            }
-        }
-        
-        // 使用当前激活角色的系统指令
-        async function callGeminiApi(prompt) {
-            if (!GEMINI_API_KEY) {
-                throw new Error("Gemini API Key 未配置。请前往设置页面输入。");
-            }
-            
-            const model = GEMINI_MODEL; 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-            
-            const contents = chatHistory.map(msg => ({ 
-                role: msg.sender === 'user' ? 'user' : 'model', 
-                parts: [{ text: msg.text }] 
-            }));
-            
-            contents.push({ role: "user", parts: [{ text: prompt }] });
-
-            const activeContact = getActiveContact();
-            const instruction = activeContact.instruction;
-
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    contents: contents, 
-                    config: {
-                        systemInstruction: instruction
-                    }
-                }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`API 调用失败 (${response.status}): ${errorData.error.message || '未知错误'}`);
-            }
-
-            const data = await response.json();
-            
-            const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            
-            if (!resultText) {
-                throw new Error("Gemini API 返回了空内容，回复可能被安全策略拦截。");
-            }
-
-            return resultText;
-        }
-
-        // 绑定发送事件
-        sendButton.addEventListener('click', handleSendMessage);
-        chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                handleSendMessage();
-            }
-        });
-        
-        // 页面加载时执行
-        window.onload = () => {
-            loadSettings();
-            loadChatHistory();
-            appBarTitle.textContent = getActiveContact().name; 
-        }
-
-        // --- 7. 页面切换逻辑 ---
-        navBar.addEventListener('change', (event) => {
-            const selectedTab = event.target.selectedTab;
-            const targetPageId = selectedTab.dataset.target;
-            const newTitle = selectedTab.label;
-
-            pages.forEach(page => page.classList.remove('active'));
-
-            const targetPage = document.getElementById(targetPageId);
-            if (targetPage) {
-                targetPage.classList.add('active');
-            }
-
-            if (targetPageId === 'page-contacts') {
-                renderContacts(); 
-                appBarTitle.textContent = newTitle;
-            } else if (targetPageId === 'page-chat') {
-                appBarTitle.textContent = getActiveContact().name; 
-            } else {
-                appBarTitle.textContent = newTitle;
-            }
-        });
-    </script>
-</body>
-</html>
+export default App;
