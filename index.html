@@ -6,215 +6,359 @@
     <title>洛琪希的柳州天气预报</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Load Inter font for clean typography -->
+    <!-- Load Inter font -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        
+        /* Base styling for smooth transitions */
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f0f4f8; /* Light gray background for MD3 feel */
+            transition: background-color 0.5s, color 0.5s;
         }
+
+        /* Custom Gradient for Roxy Header (Light Mode) */
         .roxy-gradient {
-            /* Roxy's theme colors: Blue/Purple magic */
-            background-image: linear-gradient(135deg, #4c51bf 0%, #6366f1 100%);
+            background-image: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%); /* Purple/Lavender */
+            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.5);
         }
+
+        /* Dark Mode Styling Overrides (Applied when 'dark' class is on <html>) */
+        .dark .roxy-gradient {
+            background-image: linear-gradient(135deg, #370a5c 0%, #4c1d95 100%); /* Deep Indigo/Purple */
+            box-shadow: 0 10px 30px rgba(55, 10, 92, 0.7);
+        }
+
+        /* Glowing Text Effect for the main title */
+        .glow-text {
+            text-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
+        }
+        
+        /* Utility class for icon font size */
+        .weather-icon-lg {
+            font-size: 7rem; /* 112px */
+            line-height: 1;
+        }
+
     </style>
     <script>
-        // Tailwind configuration for custom colors (MD3 inspired)
+        // Tailwind configuration for custom colors (Enhanced MD3 inspired)
         tailwind.config = {
+            darkMode: 'class', // Enable dark mode based on 'dark' class
             theme: {
                 extend: {
                     colors: {
-                        'primary-blue': '#6366f1', // Indigo/Violet for main accent
+                        // Custom Palette based on Roxy's theme
+                        'roxy-purple': '#a78bfa',
+                        
+                        // Light Mode Colors
                         'surface-light': '#ffffff',
-                        'surface-dark': '#e0e7ff', // Light blue background for cards
-                        'on-surface': '#1f2937',
+                        'card-light': '#f7f9fb', /* Lighter background for cards */
+                        'text-light': '#1f2937',
+
+                        // Dark Mode Colors (Deep, magical theme)
+                        'surface-dark': '#0f172a', /* Very dark blue */
+                        'card-dark': '#1e293b',   /* Slightly lighter surface */
+                        'text-dark': '#f1f5f9',
                     },
                     boxShadow: {
-                        'md3': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                        'md3-lg': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                        'md3-sm': '0 2px 4px rgba(0, 0, 0, 0.05)',
+                        'md3-lg': '0 10px 20px rgba(0, 0, 0, 0.1)',
+                        'roxy-hover': '0 15px 30px rgba(167, 139, 250, 0.35)',
                     }
                 }
             }
         }
     </script>
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center p-4">
+<body class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 bg-gray-100 dark:bg-surface-dark transition-colors duration-500">
 
-    <!-- Main Container Card (MD3 Style) -->
-    <div class="w-full max-w-2xl bg-surface-light rounded-3xl shadow-md3-lg overflow-hidden transition-all duration-300">
+    <!-- Main Container Card -->
+    <div class="w-full max-w-5xl bg-surface-light dark:bg-surface-dark rounded-3xl shadow-2xl overflow-hidden transition-all duration-500">
         
         <!-- Header: Roxy Theme -->
-        <div class="roxy-gradient text-white p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between rounded-t-3xl">
-            <div class="text-center sm:text-left mb-4 sm:mb-0">
-                <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">
-                    洛琪希的<span id="location-display">柳州</span>天气
+        <div class="roxy-gradient text-white p-6 sm:p-8 flex items-center justify-between rounded-t-3xl">
+            <div class="flex-grow">
+                <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight glow-text mb-1">
+                    洛琪希的<span id="location-display">柳州</span>魔法气象站
                 </h1>
-                <p class="text-sm sm:text-lg opacity-90 font-light">
-                    “愿您今天也沐浴在魔力之光下”
+                <p class="text-sm sm:text-lg opacity-90 font-light mt-1">
+                    “愿您今天的旅途，不受风雨困扰。”
                 </p>
             </div>
-            <!-- Roxy Icon Placeholder (Magic Staff / Star) -->
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-16 h-16 sm:w-20 sm:h-20 text-white opacity-80">
-                <path fill-rule="evenodd" d="M3.75 6.75a3 3 0 0 0 3-3h.007a.75.75 0 0 1 .59 1.203l-1.558 1.559a.15.15 0 0 1-.225 0V4.5A.75.75 0 0 1 6 3.75 3 3 0 0 0 3 6.75Z" clip-rule="evenodd" />
-                <path fill-rule="evenodd" d="m11.546 8.329 7.746-.775a.75.75 0 0 0 .708-.708L19.5 7.5a.75.75 0 0 0-.75-.75h-2.25a.75.75 0 0 1-.53-.22L13.195 4.3a.75.75 0 0 0-1.06 0L9.48 6.53a.75.75 0 0 1-.53.22H6.75a.75.75 0 0 0-.75.75v.005l.004.05a7.7 7.7 0 0 1 1.708 7.214l-.235 1.175a.75.75 0 0 0 .584.854l1.378.276c.492.098.995.148 1.5.148h.002c.866 0 1.714-.14 2.518-.418l2.905-.969a.75.75 0 0 0 .474-.698V14.4l-1.465-1.466a2.25 2.25 0 0 1-1.282-.992l-.11-.224a1.75 1.75 0 0 0-3.204-.32l-.248.992a.15.15 0 0 1-.216.082l-1.071-.714a.15.15 0 0 0-.174.03l-.442.441a.75.75 0 0 1-.53.22H6.75a.75.75 0 0 0-.75.75v1.5a.75.75 0 0 0 1.5 0v-1.5h.721c.216 0 .428-.052.624-.153l.492-.246a.15.15 0 0 1 .158-.023l.534.267a1.75 1.75 0 0 0 3.204-.32l.22-.88a.75.75 0 0 1 .804-.619l1.107.554a.75.75 0 0 0 .694.072l2.368-1.579a.75.75 0 0 0 .22-.644Z" clip-rule="evenodd" />
-            </svg>
+            
+            <!-- Dark Mode Toggle and Icon -->
+            <div class="flex items-center space-x-4 ml-4">
+                <button id="theme-toggle" class="p-2 rounded-full hover:bg-white/20 transition-colors duration-300" title="切换主题">
+                    <!-- Sun Icon (Light Mode) -->
+                    <svg id="sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 dark:hidden">
+                        <path d="M12 2.25a.75.75 0 0 1 .75.75v2.25a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM7.584 6.224a.75.75 0 0 0-1.06 1.06l1.59 1.59a.75.75 0 0 0 1.06-1.06l-1.59-1.59ZM16.5 4.5a.75.75 0 0 0-.75.75v2.25a.75.75 0 0 0 1.5 0V5.25a.75.75 0 0 0-.75-.75ZM4.5 12a.75.75 0 0 0 .75.75h2.25a.75.75 0 0 0 0-1.5H5.25A.75.75 0 0 0 4.5 12ZM16.5 12a.75.75 0 0 0 .75.75h2.25a.75.75 0 0 0 0-1.5h-2.25a.75.75 0 0 0-.75.75ZM7.584 17.776a.75.75 0 0 0 1.06-1.06l-1.59-1.59a.75.75 0 1 0-1.06 1.06l1.59 1.59ZM18.416 17.776a.75.75 0 0 0 1.06-1.06l-1.59-1.59a.75.75 0 1 0-1.06 1.06l1.59 1.59ZM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+                    </svg>
+                    <!-- Moon Icon (Dark Mode) -->
+                    <svg id="moon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 hidden dark:block">
+                        <path fill-rule="evenodd" d="M9.52 2.36l1.378 1.488A16.126 16.126 0 0 1 12 2.25c2.404 0 4.708.577 6.765 1.628l1.378-1.488c.325-.35.845-.35 1.17 0a.75.75 0 0 1 0 1.051l-3.275 3.535a.75.75 0 0 1-1.257-.14l-.364-1.722A14.613 14.613 0 0 0 12 5.25c-2.222 0-4.385.441-6.398 1.258L5.237 8.337a.75.75 0 0 1-1.257.14L.705 4.411a.75.75 0 0 1 0-1.051c.325-.35.845-.35 1.17 0l1.378 1.488A16.127 16.127 0 0 1 5.923 2.36l1.378 1.488A16.126 16.126 0 0 1 9.52 2.36Zm.398 19.34a16.126 16.126 0 0 1-1.378-1.488l-1.378 1.488a.75.75 0 0 1-1.17 0 .75.75 0 0 1 0-1.051l3.275-3.535a.75.75 0 0 1 1.257.14l.364 1.722A14.613 14.613 0 0 0 12 18.75c2.222 0 4.385-.441 6.398-1.258l.364-1.722a.75.75 0 0 1 1.257-.14l3.275 3.535a.75.75 0 0 1 0 1.051.75.75 0 0 1-1.17 0l-1.378-1.488a16.126 16.126 0 0 1-1.378 1.488.75.75 0 0 1-1.17 0l-1.378-1.488a16.126 16.126 0 0 1-1.378 1.488l-1.378 1.488a.75.75 0 0 1-1.17 0Z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+
+                 <!-- Roxy Magic Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-12 h-12 text-white opacity-90 transition-transform duration-500 hover:rotate-12 hidden sm:block">
+                    <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v6.75a.75.75 0 0 0 1.5 0V6ZM15 9.75a.75.75 0 0 0 0 1.5h-.75a.75.75 0 0 0 0-1.5H15ZM10.5 9.75a.75.75 0 0 0 0 1.5h.75a.75.75 0 0 0 0-1.5h-.75ZM12 14.25a.75.75 0 0 1 .75.75v.75a.75.75 0 0 1-1.5 0v-.75a.75.75 0 0 1 .75-.75ZM16.5 12a.75.75 0 0 0 0-1.5h-.75a.75.75 0 0 0 0 1.5h.75ZM7.5 12a.75.75 0 0 0 0-1.5h.75a.75.75 0 0 0 0 1.5h-.75Z" clip-rule="evenodd" />
+                    <path fill-rule="evenodd" d="M12 22.5c5.076 0 9.2-4.041 9.746-9.155a.75.75 0 1 0-1.485-.357A8.252 8.252 0 0 1 12 21c-4.556 0-8.25-3.694-8.25-8.25 0-4.073 2.935-7.464 6.819-8.083a.75.75 0 1 0-.158-1.496C5.698 3.794 2.25 7.568 2.25 12c0 5.385 4.365 9.75 9.75 9.75Z" clip-rule="evenodd" />
+                </svg>
+            </div>
         </div>
 
-        <!-- Loading / Error Message Area -->
-        <div id="loading-spinner" class="p-8 text-center" style="display: none;">
-            <div class="animate-spin rounded-full h-12 w-12 border-4 border-primary-blue border-t-transparent mx-auto mb-4"></div>
-            <p class="text-on-surface">正在向魔界发送天气请求...</p>
-        </div>
-
-        <div id="error-message" class="p-8 text-center text-red-600 bg-red-100 hidden rounded-b-3xl">
-            <p class="font-semibold">错误：无法获取天气数据。</p>
-            <p class="text-sm mt-2">请检查 API 地址或网络连接是否正常。</p>
+        <!-- Status Area (Loading/Error) -->
+        <div id="status-area" class="p-8 text-center text-text-light dark:text-text-dark min-h-32 flex flex-col justify-center transition-colors duration-500">
+            <div id="loading-spinner" class="flex flex-col items-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-4 border-roxy-purple dark:border-roxy-purple border-t-transparent mx-auto mb-4"></div>
+                <p class="text-lg">正在向魔界发送天气请求...</p>
+            </div>
+            
+            <div id="error-message" class="text-red-600 bg-red-100 dark:bg-red-900 dark:text-red-300 p-4 rounded-lg hidden">
+                <p class="font-semibold text-xl">✨ 魔法失败 ✨</p>
+                <p class="text-sm mt-2" id="error-text">无法获取天气数据。请检查网络或魔法源。</p>
+            </div>
         </div>
 
         <!-- Weather Content Cards -->
-        <div id="weather-content" class="p-6 sm:p-8 space-y-6 hidden">
+        <div id="weather-content" class="p-4 sm:p-8 space-y-10 hidden text-text-light dark:text-text-dark">
             
-            <!-- Main Temperature Card -->
-            <div class="flex flex-col sm:flex-row items-center justify-center bg-surface-dark p-6 rounded-2xl shadow-md3">
-                <div class="flex-shrink-0 mb-4 sm:mb-0 sm:mr-6 text-primary-blue">
-                    <!-- Icon Placeholder - will be updated by JS -->
-                    <h2 id="weather-icon" class="text-7xl">---</h2> 
-                </div>
-                <div class="text-center sm:text-left">
-                    <!-- Open-Meteo does not provide descriptive summaries easily, so we show the current time and temperature. -->
-                    <p id="description" class="text-3xl font-semibold text-on-surface">当前天气状况</p>
-                    <div class="flex items-baseline mt-1">
-                        <span id="temp" class="text-6xl font-extrabold text-on-surface">--°C</span>
-                        <span id="weather-code" class="ml-4 text-lg text-gray-600">--</span>
+            <!-- CURRENT WEATHER SECTION (Main Focus) -->
+            <section>
+                <h2 class="text-2xl font-bold mb-6 border-b border-roxy-purple/50 pb-2">当前魔力波动</h2>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    
+                    <!-- 1. Main Temperature Card (Central Element) -->
+                    <div class="lg:col-span-1 bg-card-light dark:bg-card-dark p-8 rounded-2xl shadow-md3-lg flex flex-col items-center justify-center transition-colors duration-500">
+                        <h2 id="weather-icon" class="weather-icon-lg text-roxy-purple dark:text-roxy-purple transition-transform duration-500 hover:scale-105">---</h2> 
+                        <div class="text-center mt-4">
+                            <span id="temp" class="text-7xl font-extrabold">--°C</span>
+                            <p id="description" class="text-xl font-semibold text-gray-700 dark:text-gray-300 mt-2">当前天气状况</p>
+                            <p id="temp-range" class="text-md text-gray-500 dark:text-gray-400 mt-1">今日：--°C / --°C</p>
+                        </div>
                     </div>
-                    <p id="temp-range" class="text-md text-gray-500 mt-1">今日：最低 --°C / 最高 --°C</p>
-                </div>
-            </div>
 
-            <!-- Detail Grid (Two Columns) -->
-            <div class="grid grid-cols-2 gap-4">
-                
-                <!-- Wind Speed Card -->
-                <div class="bg-surface-dark p-4 rounded-2xl shadow-md3 flex flex-col items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 text-primary-blue mb-1">
-                        <path d="M11.5 2.75a.75.75 0 0 1 .75.75v5.437l.794-.794a.75.75 0 1 1 1.06 1.06L12.56 12.31l-3.375-3.375a.75.75 0 1 1 1.06-1.06l.794.793V3.5a.75.75 0 0 1 .75-.75Z" />
-                        <path d="M4.5 13.5a.75.75 0 0 0-.75.75v5.25c0 .414.336.75.75.75h15c.414 0 .75-.336.75-.75v-5.25a.75.75 0 0 0-1.5 0v5.25h-13.5v-5.25a.75.75 0 0 0-.75-.75Z" />
-                    </svg>
-                    <p class="text-sm text-gray-600">风速</p>
-                    <p id="wind-speed" class="text-xl font-bold text-on-surface">-- km/h</p>
-                </div>
-                
-                <!-- Humidity Card -->
-                <div class="bg-surface-dark p-4 rounded-2xl shadow-md3 flex flex-col items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 text-primary-blue mb-1">
-                        <path d="M12 2.25a6.75 6.75 0 0 0-6.75 6.75c0 3.784-1.5 6.425-3.084 7.641A4.5 4.5 0 0 0 5.625 22.5h12.75a4.5 4.5 0 0 0 3.084-1.859c-1.584-1.216-3.084-3.857-3.084-7.641A6.75 6.75 0 0 0 12 2.25Z" />
-                    </svg>
-                    <p class="text-sm text-gray-600">相对湿度</p>
-                    <p id="humidity" class="text-xl font-bold text-on-surface">-- %</p>
-                </div>
-                
-                <!-- Pressure Card -->
-                <div class="bg-surface-dark p-4 rounded-2xl shadow-md3 flex flex-col items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 text-primary-blue mb-1">
-                        <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm4.28 10.28a.75.75 0 0 0 0-1.06l-3.5-3.5a.75.75 0 0 0-1.06 0l-3.5 3.5a.75.75 0 0 0 1.06 1.06l2.97-2.97v6.44a.75.75 0 0 0 1.5 0v-6.44l2.97 2.97Z" clip-rule="evenodd" />
-                    </svg>
-                    <p class="text-sm text-gray-600">海平面气压</p>
-                    <p id="pressure" class="text-xl font-bold text-on-surface">-- hPa</p>
-                </div>
-                
-                <!-- Apparent Temperature Card -->
-                <div class="bg-surface-dark p-4 rounded-2xl shadow-md3 flex flex-col items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 text-primary-blue mb-1">
-                        <path d="M16.125 10.5C18.687 10.5 21 12.813 21 15.75c0 2.417-1.156 4.706-2.934 6.138A7.323 7.323 0 0 1 12 22.5c-2.43 0-4.706-1.157-6.138-2.934-1.782-1.432-2.934-3.721-2.934-6.138 0-2.937 2.313-5.25 4.875-5.25a.75.75 0 0 1 0 1.5c-2.094 0-3.75 1.706-3.75 3.75 0 2.327 1.144 4.148 2.662 5.344a6.772 6.772 0 0 0 8.176 0c1.518-1.196 2.662-3.017 2.662-5.344 0-2.042-1.656-3.714-3.75-3.75a.75.75 0 0 1 0-1.5ZM17.16 8.368c.07-.376-.046-.74-.326-1.02a.75.75 0 0 0-1.06 0l-.364.363L14.73 7.02l.363-.364a.75.75 0 0 0 0-1.06 3.01 3.01 0 0 0-3.32-.423L11 5.176V3.75a.75.75 0 0 0-1.5 0v1.426l-.014.004a3.01 3.01 0 0 0-3.32-.423.75.75 0 0 0 0 1.06l.363.364-.364.364a.75.75 0 0 0 0 1.06c.28.28.655.396 1.02.326.368-.07.697-.246.953-.473.256-.227.46-.497.604-.803a.15.15 0 0 1 .277.01c.214.46.596.868 1.05.795a.15.15 0 0 1 .155.153V10.5a.75.75 0 0 0 1.5 0V8.924c.036.007.07.014.105.014.368 0 .736-.18 1.02-.459.28-.28.396-.656.326-1.02Z" />
-                    </svg>
-                    <p class="text-sm text-gray-600">体感温度</p>
-                    <p id="apparent-temp" class="text-xl font-bold text-on-surface">--°C</p>
-                </div>
+                    <!-- 2. Detail Metrics Grid (Side Element, 2x2 Layout) -->
+                    <div class="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-4">
+                        
+                        <!-- Metric Card Template -->
+                        <div class="bg-card-light dark:bg-card-dark p-4 rounded-xl shadow-md3-sm flex flex-col items-center justify-center transition-all duration-300 hover:shadow-roxy-hover hover:scale-[1.03] cursor-default">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-roxy-purple mb-1">
+                                <path fill-rule="evenodd" d="M18.685 19.066A2.25 2.25 0 0 1 12 22.5c-3.275 0-6.241-1.28-8.406-3.351A1.875 1.875 0 0 1 3.75 16.5v-1.125c.047-.134.1-.266.15-.395.239-.672.663-1.27.795-1.393L9.75 6.45 10.5 7.2l-3.25 5.514A2.695 2.695 0 0 0 6.185 14.5c-.32.007-.639.007-.958.007v.993c0 .265.111.517.306.703 1.258 1.159 3.125 1.94 5.167 1.94 2.112 0 4.026-.81 5.312-2.096.188-.188.307-.442.307-.707v-.993c-.32.007-.639.007-.958.007A2.695 2.695 0 0 0 14.25 13.5l5.064-5.064A.75.75 0 0 1 20.25 9v5.25c0 .24-.136.463-.357.578a2.25 2.25 0 0 1-1.208 1.988Z" clip-rule="evenodd" />
+                                <path fill-rule="evenodd" d="M12 2.25a.75.75 0 0 1 .75.75v5.25a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd" />
+                            </svg>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">体感温度</p>
+                            <p id="apparent-temp" class="text-xl font-bold mt-1">--°C</p>
+                        </div>
 
-            </div>
+                        <div class="bg-card-light dark:bg-card-dark p-4 rounded-xl shadow-md3-sm flex flex-col items-center justify-center transition-all duration-300 hover:shadow-roxy-hover hover:scale-[1.03] cursor-default">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-roxy-purple mb-1">
+                                <path fill-rule="evenodd" d="M12 2.25a6.75 6.75 0 0 0-6.75 6.75c0 3.784-1.5 6.425-3.084 7.641A4.5 4.5 0 0 0 5.625 22.5h12.75a4.5 4.5 0 0 0 3.084-1.859c-1.584-1.216-3.084-3.857-3.084-7.641A6.75 6.75 0 0 0 12 2.25Z" clip-rule="evenodd" />
+                            </svg>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">相对湿度</p>
+                            <p id="humidity" class="text-xl font-bold mt-1">-- %</p>
+                        </div>
+                        
+                        <!-- Wind Speed and Direction (Optimized Layout) -->
+                        <div class="bg-card-light dark:bg-card-dark p-4 rounded-xl shadow-md3-sm flex flex-col items-center justify-center transition-all duration-300 hover:shadow-roxy-hover hover:scale-[1.03] cursor-default">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-roxy-purple mb-1">
+                                <path d="M11.5 2.75a.75.75 0 0 1 .75.75v5.437l.794-.794a.75.75 0 1 1 1.06 1.06L12.56 12.31l-3.375-3.375a.75.75 0 1 1 1.06-1.06l.794.793V3.5a.75.75 0 0 1 .75-.75Z" />
+                                <path d="M4.5 13.5a.75.75 0 0 0-.75.75v5.25c0 .414.336.75.75.75h15c.414 0 .75-.336.75-.75v-5.25a.75.75 0 0 0-1.5 0v5.25h-13.5v-5.25a.75.75 0 0 0-.75-.75Z" />
+                            </svg>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">风速 / 风向</p>
+                            <div class="flex flex-col items-center mt-1">
+                                <p id="wind-speed" class="text-xl font-bold">-- km/h</p>
+                                <p id="wind-direction" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">--</p>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-card-light dark:bg-card-dark p-4 rounded-xl shadow-md3-sm flex flex-col items-center justify-center transition-all duration-300 hover:shadow-roxy-hover hover:scale-[1.03] cursor-default">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-roxy-purple mb-1">
+                                <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm4.28 10.28a.75.75 0 0 0 0-1.06l-3.5-3.5a.75.75 0 0 0-1.06 0l-3.5 3.5a.75.75 0 0 0 1.06 1.06l2.97-2.97v6.44a.75.75 0 0 0 1.5 0v-6.44l2.97 2.97Z" clip-rule="evenodd" />
+                            </svg>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">气压</p>
+                            <p id="pressure" class="text-xl font-bold mt-1">-- hPa</p>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- 7-DAY FORECAST SECTION -->
+            <section>
+                <h2 class="text-2xl font-bold mb-6 border-b border-roxy-purple/50 pb-2">未来七日预报 (魔法轨迹)</h2>
+                <div id="daily-forecast-container" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-3 sm:gap-4">
+                    <!-- Daily Forecast Cards will be injected here by JavaScript -->
+                </div>
+            </section>
             
-            <p class="text-sm text-gray-400 text-center pt-4">数据更新于: <span id="update-time">--</span></p>
+            <p class="text-sm text-center text-gray-400 dark:text-gray-500 pt-4 transition-colors duration-500">
+                数据更新于: <span id="update-time">--</span> | WMO码: <span id="weather-code">--</span>
+            </p>
 
         </div>
 
-        <div id="footer-note" class="p-4 text-xs text-center text-gray-500 border-t mt-4 rounded-b-3xl">
+        <div id="footer-note" class="p-4 text-xs text-center text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-800 rounded-b-3xl transition-colors duration-500">
             数据来源: Open-Meteo.com (免费开放 API，无需密钥)
         </div>
 
     </div>
 
-    <!-- JavaScript for Fetching Weather Data -->
+    <!-- JavaScript for Theme and Weather Data -->
     <script>
-        // Open-Meteo API URL for current weather data
+        // --- Configuration ---
         const LATITUDE = 24.33; // 柳州大致纬度
         const LONGITUDE = 109.41; // 柳州大致经度
-        // 请求当前温度、体感温度、天气代码、海平面气压、相对湿度、风速和每日的最高最低温度
-        const API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&current=temperature_2m,apparent_temperature,weather_code,surface_pressure,relative_humidity_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=Asia%2FSingapore`;
+        // V5 优化: 增加 wind_direction_10m
+        const API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&current=temperature_2m,apparent_temperature,weather_code,surface_pressure,relative_humidity_2m,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=Asia%2FSingapore&forecast_days=7`;
 
+        // --- DOM Elements ---
+        const htmlEl = document.documentElement;
+        const themeToggleBtn = document.getElementById('theme-toggle');
         const locationDisplay = document.getElementById('location-display');
+        const statusArea = document.getElementById('status-area');
         const loadingSpinner = document.getElementById('loading-spinner');
         const errorMessageDiv = document.getElementById('error-message');
+        const errorTextEl = document.getElementById('error-text');
         const weatherContentDiv = document.getElementById('weather-content');
+        
+        // Current Weather Elements
         const descriptionEl = document.getElementById('description');
         const tempEl = document.getElementById('temp');
         const weatherCodeEl = document.getElementById('weather-code');
         const tempRangeEl = document.getElementById('temp-range');
         const windSpeedEl = document.getElementById('wind-speed');
+        const windDirectionEl = document.getElementById('wind-direction'); // 新增风向元素
         const humidityEl = document.getElementById('humidity');
         const pressureEl = document.getElementById('pressure');
         const apparentTempEl = document.getElementById('apparent-temp');
         const updateTimeEl = document.getElementById('update-time');
         const weatherIconEl = document.getElementById('weather-icon');
+        const dailyForecastContainer = document.getElementById('daily-forecast-container');
+
+
+        // --- 1. Dark Mode Logic ---
+
+        function loadTheme() {
+            const storedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+            if (storedTheme === 'dark' || (!storedTheme && prefersDark)) {
+                htmlEl.classList.add('dark');
+            } else {
+                htmlEl.classList.remove('dark');
+            }
+        }
+
+        function toggleTheme() {
+            if (htmlEl.classList.contains('dark')) {
+                htmlEl.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                htmlEl.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        themeToggleBtn.addEventListener('click', toggleTheme);
+        
+
+        // --- 2. Weather Data Mapping ---
 
         /**
          * WMO Weather Interpretation Codes (WMO CODE) to Chinese description and Emoji.
-         * Open-Meteo uses WMO codes instead of simple strings.
-         * @param {number} code - The WMO weather code.
-         * @returns {{description: string, emoji: string}} Description and Emoji.
          */
         function getWeatherWmoInfo(code) {
-            switch (code) {
-                case 0: return { description: '晴朗', emoji: '☀️' };
-                case 1: return { description: '多云为主', emoji: '🌤️' };
-                case 2: return { description: '部分多云', emoji: '⛅' };
-                case 3: return { description: '阴天', emoji: '☁️' };
-                case 45: return { description: '雾', emoji: '🌫️' };
-                case 48: return { description: '雾凇', emoji: '🌫️❄️' };
-                case 51: return { description: '小雨', emoji: '🌧️' };
-                case 53: return { description: '中雨', emoji: '🌧️' };
-                case 55: return { description: '大雨', emoji: '🌧️' };
-                case 61: return { description: '小到中雨', emoji: '☔' };
-                case 63: return { description: '中到大雨', emoji: '☔' };
-                case 65: return { description: '暴雨', emoji: '☔' };
-                case 71: return { description: '小雪', emoji: '🌨️' };
-                case 73: return { description: '中雪', emoji: '🌨️' };
-                case 75: return { description: '大雪', emoji: '🌨️' };
-                case 80: return { description: '阵雨', emoji: '🌦️' };
-                case 81: return { description: '中等阵雨', emoji: '🌦️' };
-                case 82: return { description: '强烈阵雨', emoji: '⛈️' };
-                case 95: return { description: '雷暴', emoji: '⚡' };
-                default: return { description: '未知天气代码', emoji: '❓' };
+            // Simplified WMO codes for general display
+            if (code <= 3) return { description: code === 0 ? '晴朗 (洛琪希的祝福)' : '多云/阴天', emoji: code === 0 ? '☀️' : (code <= 1 ? '🌤️' : '☁️') };
+            if (code >= 45 && code <= 48) return { description: '迷雾 (空间转移中)', emoji: '🌫️' };
+            if (code >= 51 && code <= 65) return { description: '降雨 (水魔术)', emoji: code <= 55 ? '🌧️' : '☔' };
+            if (code >= 71 && code <= 77) return { description: '降雪 (冰魔术)', emoji: '❄️' };
+            if (code >= 80 && code <= 82) return { description: '阵雨/强阵雨', emoji: '🌦️' };
+            if (code >= 95 && code <= 99) return { description: '雷暴 (闪电魔术)', emoji: '⚡' };
+            return { description: '未知魔法波动', emoji: '❓' };
+        }
+        
+        /**
+         * Converts wind direction degrees (0-360) to Chinese cardinal direction.
+         */
+        function getWindDirectionText(degrees) {
+            const directions = ["北风", "东北风", "东风", "东南风", "南风", "西南风", "西风", "西北风"];
+            // Add 22.5 to shift the starting point so 0-22.5 is North
+            const index = Math.round((degrees % 360) / 45);
+            return directions[index % 8];
+        }
+
+        /**
+         * Renders the 7-day daily forecast cards.
+         */
+        function renderDailyForecast(daily) {
+            dailyForecastContainer.innerHTML = ''; // Clear previous content
+            
+            const daysOfWeek = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+            
+            for (let i = 0; i < daily.time.length; i++) {
+                const dateStr = daily.time[i];
+                const date = new Date(dateStr);
+                const dayIndex = date.getDay();
+                
+                const isToday = i === 0;
+                const dayName = isToday ? '今天' : daysOfWeek[dayIndex];
+                
+                const minTemp = Math.round(daily.temperature_2m_min[i]);
+                const maxTemp = Math.round(daily.temperature_2m_max[i]);
+                const wmoCode = daily.weather_code[i];
+                const precipProb = daily.precipitation_probability_max[i];
+                
+                const info = getWeatherWmoInfo(wmoCode);
+
+                const cardHtml = `
+                    <div class="bg-card-light dark:bg-card-dark p-3 rounded-xl shadow-md3-sm flex flex-col items-center justify-between min-h-36 
+                                transition-all duration-300 hover:shadow-roxy-hover hover:scale-[1.03] cursor-pointer text-center
+                                ${isToday ? 'border-2 border-roxy-purple dark:border-roxy-purple/70' : 'border border-transparent'}">
+                        
+                        <p class="font-semibold text-base mb-1 ${isToday ? 'text-roxy-purple dark:text-roxy-purple' : 'text-gray-700 dark:text-gray-300'}">${dayName}</p>
+
+                        <span class="text-3xl mb-1">${info.emoji}</span>
+                        
+                        <p class="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">${info.description.split(' ')[0]}</p>
+
+                        <p class="text-base font-bold">${maxTemp}° / ${minTemp}°</p>
+                        
+                        <div class="flex items-center text-xs text-blue-600 dark:text-blue-400 mt-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3 mr-0.5">
+                                <path d="M11.72 1.52a.75.75 0 0 1 1.06 0l7.5 7.5c.24.24.375.56.375.901v9.799a2.25 2.25 0 0 1-2.25 2.25H4.5A2.25 2.25 0 0 1 2.25 19.799v-9.799c0-.34.135-.66.375-.901l7.5-7.5Z" clip-rule="evenodd" />
+                            </svg>
+                            ${precipProb}%
+                        </div>
+                    </div>
+                `;
+                dailyForecastContainer.innerHTML += cardHtml;
             }
         }
 
         /**
          * Displays an error message and hides the content.
-         * @param {string} message - The error message to display in the console.
          */
         function showError(message) {
             console.error("Weather Fetch Error:", message);
             loadingSpinner.style.display = 'none';
             weatherContentDiv.classList.add('hidden');
             errorMessageDiv.classList.remove('hidden');
+            statusArea.classList.remove('justify-center');
+            errorTextEl.textContent = message;
         }
 
         /**
-         * Fetches weather data from Open-Meteo API (free and no key required).
+         * Fetches weather data from Open-Meteo API.
          */
         async function fetchWeather() {
-            loadingSpinner.style.display = 'block';
+            loadingSpinner.style.display = 'flex';
             errorMessageDiv.classList.add('hidden');
             weatherContentDiv.classList.add('hidden');
+            statusArea.classList.add('justify-center');
             
             try {
                 const response = await fetch(API_URL);
@@ -224,56 +368,54 @@
 
                 const data = await response.json();
                 
-                // 检查是否包含预期的当前天气数据
                 if (!data.current || !data.daily || !data.daily.time || data.daily.time.length === 0) {
-                    throw new Error("API返回数据格式不正确，缺少当前或每日数据。");
+                    throw new Error("API返回数据格式不正确。");
                 }
                 
                 const current = data.current;
                 const daily = data.daily;
 
-                // --- 提取和更新 UI ---
-                
+                // --- 1. Current Weather Update ---
                 const weatherInfo = getWeatherWmoInfo(current.weather_code);
-                
-                // 主显示
-                const temp = Math.round(current.temperature_2m);
-                const apparentTemp = Math.round(current.apparent_temperature);
-                
-                // 每日最高温和最低温（Open-Meteo返回数组，取第一个元素即今天）
                 const minTemp = Math.round(daily.temperature_2m_min[0]);
                 const maxTemp = Math.round(daily.temperature_2m_max[0]);
                 
+                tempEl.textContent = `${Math.round(current.temperature_2m)}°C`;
                 descriptionEl.textContent = weatherInfo.description;
-                tempEl.textContent = `${temp}°C`;
-                weatherCodeEl.textContent = `WMO 码: ${current.weather_code}`;
-                tempRangeEl.textContent = `今日：最低 ${minTemp}°C / 最高 ${maxTemp}°C`;
-                weatherIconEl.textContent = weatherInfo.emoji; // Set the emoji
-
-                // 细节卡片
-                // Open-Meteo风速默认为 km/h，相对湿度为 %，气压为 hPa。
+                weatherIconEl.textContent = weatherInfo.emoji; 
+                tempRangeEl.textContent = `今日：${maxTemp}°C / ${minTemp}°C`;
+                
+                // Detail Info
                 windSpeedEl.textContent = `${current.wind_speed_10m.toFixed(1)} km/h`;
+                // V5 优化: 新增风向显示
+                windDirectionEl.textContent = getWindDirectionText(current.wind_direction_10m); 
+
                 humidityEl.textContent = `${current.relative_humidity_2m} %`;
                 pressureEl.textContent = `${current.surface_pressure.toFixed(0)} hPa`; 
-                apparentTempEl.textContent = `${apparentTemp}°C`; 
+                apparentTempEl.textContent = `${Math.round(current.apparent_temperature)}°C`; 
+                weatherCodeEl.textContent = `${current.weather_code}`;
                 
-                // 更新时间
+                // Update Time
                 const date = new Date(current.time);
-                // 格式化时间为本地时间字符串
                 updateTimeEl.textContent = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
 
-                // 显示内容
+                // --- 2. Daily Forecast Update ---
+                renderDailyForecast(daily);
+
+                // Show Content
                 loadingSpinner.style.display = 'none';
                 weatherContentDiv.classList.remove('hidden');
+                statusArea.classList.remove('justify-center');
 
             } catch (error) {
                 locationDisplay.textContent = '错误';
-                showError(error.message);
+                showError(error.message || '网络连接失败');
             }
         }
 
         // Initialize on load
         window.onload = function() {
+            loadTheme(); // Load theme preference first
             fetchWeather();
         };
 
