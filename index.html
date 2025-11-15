@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+    <meta name="theme-color" content="#6750a4"> 
+    <title>Gemini 聊天模拟 App</title>
+
+    <script type="module" src="https://unpkg.com/@material/web/all.js"></script>
+
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    
+    <style id="theme-style"></style>
+
+    <style>
+        /* --- 移动端适配核心：Flexbox 布局与高度控制 --- */
+        body {
+            font-family: Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--md-sys-color-background);
+            color: var(--md-sys-color-on-background);
+            display: flex;
+            flex-direction: column;
+            height: 100dvh; 
+            overflow: hidden; 
+        }
+
+        md-top-app-bar-fixed { position: sticky; top: 0; z-index: 10; }
+        md-navigation-bar { position: fixed; bottom: 0; left: 0; right: 0; width: 100%; z-index: 10; }
+
+        .content-container { flex-grow: 1; padding: 0; overflow-y: auto; padding-bottom: 80px; }
+        
+        .page { display: none; padding: 16px; min-height: 100%; box-sizing: border-box; }
+        .page.active { display: block; }
+
+        /* 聊天页面专用布局 (Flexbox 结构) */
+        #page-chat { display: flex; flex-direction: column; height: 100%; padding: 16px; box-sizing: border-box; }
+        #chat-page { display: flex; flex-direction: column; height: 100%; }
+
+        .chat-messages { flex-grow: 1; overflow-y: auto; margin-bottom: 10px; }
+        .chat-input-area { display: flex; gap: 8px; padding: 8px 0; }
+
+        /* --- 聊天气泡样式 --- */
+        md-filled-text-field { flex-grow: 1; }
+        .user-message, .gemini-message { max-width: 85%; padding: 10px 15px; border-radius: 20px; margin-bottom: 8px; line-height: 1.4; }
+        .user-message { background-color: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); margin-left: auto; border-bottom-right-radius: 4px; }
+        .gemini-message { background-color: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface); margin-right: auto; border-bottom-left-radius: 4px; }
+        
+        /* --- 拟人化：打字指示器样式 --- */
+        #loading-indicator-container {
+            margin-right: auto; 
+            max-width: 80%; 
+            padding: 10px 15px; 
+            display: flex; 
+            align-items: center; 
+            gap: 8px; 
+            margin-bottom: 8px;
+            border-radius: 20px;
+            background-color: var(--md-sys-color-surface-container-high); 
+            transition: opacity 0.2s ease-in-out;
+            border-bottom-left-radius: 4px; 
+        }
+
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            height: 12px; 
+        }
+
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            background-color: var(--md-sys-color-on-surface-variant);
+            border-radius: 50%;
+            opacity: 0.5;
+            animation: typing-dots 1.2s infinite ease-in-out;
+        }
+
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing-dots {
+            0%, 100% { transform: translateY(0); opacity: 0.5; }
+            50% { transform: translateY(-4px); opacity: 1; }
+        }
+
+        .typing-text {
+            color: var(--md-sys-color-on-surface-variant); 
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        /* --- 其他 MD3/设置样式 --- */
+        .page-title { display: flex; align-items: center; gap: 8px; font-size: 1.25rem; margin-bottom: 16px; color: var(--md-sys-color-on-background); }
+        .page-title md-icon { font-size: 1.5rem; color: var(--md-sys-color-on-background); }
+        .setting-card { margin-bottom: 20px; padding: 20px; border-radius: 12px; background-color: var(--md-sys-color-surface-container-low); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+        .setting-card h4 { margin-top: 0; }
+        
+        #color-input-container { display: flex; align-items: center; gap: 16px; }
+        #color-input-container input[type="color"] {
+            width: 48px; height: 48px; border: 2px solid var(--md-sys-color-outline);
+            cursor: pointer; border-radius: 8px; padding: 0; overflow: hidden; background: none;
+            -webkit-appearance: none; -moz-appearance: none; appearance: none;
+        }
+        #color-input-container input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        #color-input-container input[type="color"]::-webkit-color-swatch { border: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <md-top-app-bar-fixed>
+            <md-icon-button slot="leading-icon">
+                <md-icon>menu</md-icon>
+            </md-icon-button>
+            <div slot="title" id="app-bar-title">聊天</div>
+            <md-icon-button slot="trailing-icon">
+                <md-icon>search</md-icon>
+            </md-icon-button>
+        </md-top-app-bar-fixed>
+    </header>
+
+    <main class="content-container">
+        
+        <div id="page-chat" class="page active">
+            <div id="chat-page">
+                <div class="chat-messages" id="message-list"></div>
+                
+                <div id="loading-indicator-container" style="display: none;">
+                    <div class="typing-indicator">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <p class="typing-text">Gemini 正在输入...</p>
+                </div>
+                
+                <div class="chat-input-area">
+                    <md-filled-text-field
+                        id="chat-input"
+                        label="与 Gemini 聊天..."
+                        rows="1"
+                        style="--md-filled-text-field-container-shape: 28px;" 
+                    ></md-filled-text-field>
+                    <md-icon-button id="send-button" style="color: var(--md-sys-color-primary);">
+                        <md-icon>send</md-icon>
+                    </md-icon-button>
+                </div>
+            </div>
+        </div>
+
+        <div id="page-contacts" class="page">
+            <div class="page-title">
+                <md-icon>people</md-icon>
+                <h3>联系人与角色设定</h3>
+            </div>
+            
+            <div class="setting-card">
+                <h4>当前对话角色</h4>
+                <md-list id="active-contact-display-list">
+                    </md-list>
+            </div>
+
+            <div class="setting-card">
+                <h4>所有可用角色 (点击切换)</h4>
+                <md-list id="contacts-list">
+                    </md-list>
+            </div>
+
+            <div class="setting-card">
+                <h4>创建新角色/联系人</h4>
+                <md-outlined-text-field
+                    id="new-contact-name-input"
+                    label="角色名称 (如: 洛琪希)"
+                    style="width: 100%; margin-bottom: 12px;"
+                ></md-outlined-text-field>
+
+                <md-outlined-text-field
+                    id="new-contact-instruction-input"
+                    label="系统指令/设定词 (必填)"
+                    type="textarea"
+                    rows="3"
+                    style="width: 100%; margin-bottom: 12px;"
+                ></md-outlined-text-field>
+                
+                <md-filled-button 
+                    id="create-contact-button" 
+                    style="width: 100%;"
+                >
+                    <md-icon slot="icon">person_add</md-icon>
+                    创建新角色
+                </md-filled-button>
+            </div>
+        </div>
+
+        <div id="page-settings" class="page">
+            <div class="page-title">
+                <md-icon>settings</md-icon>
+                <h3>设置</h3>
+            </div>
+            
+            <div class="setting-card">
+                <h4>主题颜色 (莫奈取色)</h4>
+                <md-list>
+                    <md-list-item headline="选择主题种子颜色">
+                        <div id="color-input-container" slot="end">
+                            <input type="color" id="seed-color-input" value="#6750a4">
+                            <md-icon>palette</md-icon>
+                        </div>
+                    </md-list-item>
+                    <md-list-item supporting-text="基于此颜色，应用将动态生成 Material You 风格的主题。"></md-list-item>
+                </md-list>
+            </div>
+            
+            <div class="setting-card">
+                <h4>模型配置</h4>
+                <md-select label="选择 Gemini 模型" id="model-select" style="width: 100%; margin-bottom: 12px;">
+                    <md-menu-item value="gemini-2.5-flash">
+                        <div slot="headline">Gemini 2.5 Flash (快速)</div>
+                    </md-menu-item>
+                    <md-menu-item value="gemini-2.5-pro">
+                        <div slot="headline">Gemini 2.5 Pro (高级)</div>
+                    </md-menu-item>
+                </md-select>
+            </div>
+            
+            <div class="setting-card">
+                <h4>Gemini API Key</h4>
+                
+                <md-outlined-text-field
+                    id="api-key-input"
+                    label="输入您的 Gemini API Key"
+                    type="password"
+                    style="width: 100%; margin-bottom: 12px;"
+                ></md-outlined-text-field>
+                
+                <md-filled-button 
+                    id="save-key-button" 
+                    style="width: 100%;"
+                >
+                    <md-icon slot="icon">save</md-icon>
+                    保存 API Key
+                </md-filled-button>
+
+                <p style="font-size: 0.8rem; color: var(--md-sys-color-on-surface-variant); margin-top: 12px;">
+                    当前状态: <span id="api-status">未配置</span>
+                </p>
+            </div>
+            
+            <div class="setting-card">
+                <h4>数据与通知管理</h4>
+                <md-list>
+                    <md-list-item headline="新消息通知" supporting-text="当 Gemini 回复时，发送浏览器通知">
+                        <md-switch slot="end" id="notification-switch"></md-switch>
+                    </md-list-item>
+
+                    <md-list-item headline="自动保存聊天记录和设置" supporting-text="默认开启，数据保存在浏览器本地">
+                        <md-switch slot="end" id="auto-save-switch"></md-switch>
+                    </md-list-item>
+                </md-list>
+                
+                <md-outlined-button id="clear-history-button" style="width: 100%; margin-top: 20px;" has-icon>
+                    <md-icon slot="icon">delete_sweep</md-icon>
+                    清除所有聊天记录
+                </md-outlined-button>
+            </div>
+
+            <md-list style="margin-top: 20px;">
+                <md-list-item headline="关于应用">
+                    <md-icon slot="start">info</md-icon>
+                </md-list-item>
+            </md-list>
+        </div>
+
+    </main>
+
+    <md-navigation-bar>
+        <md-navigation-tab id="tab-chat" label="聊天" active data-target="page-chat">
+            <md-icon slot="activeIcon">chat</md-icon>
+            <md-icon slot="inactiveIcon">chat_bubble_outline</md-icon>
+        </md-navigation-tab>
+
+        <md-navigation-tab id="tab-contacts" label="角色" data-target="page-contacts">
+            <md-icon slot="activeIcon">people</md-icon>
+            <md-icon slot="inactiveIcon">people_outline</md-icon>
+        </md-navigation-tab>
+
+        <md-navigation-tab id="tab-settings" label="设置" data-target="page-settings">
+            <md-icon slot="activeIcon">settings</md-icon>
+            <md-icon slot="inactiveIcon">settings_outline</md-icon>
+        </md-navigation-tab>
+    </md-navigation-bar>
+
+    <script>
+        // --- 变量定义和初始化 ---
+        const navBar = document.querySelector('md-navigation-bar');
+        const pages = document.querySelectorAll('.page');
+        const appBarTitle = document.getElementById('app-bar-title');
+        const messageList = document.getElementById('message-list');
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const saveKeyButton = document.getElementById('save-key-button');
+        const apiStatus = document.getElementById('api-status');
+        const autoSaveSwitch = document.getElementById('auto-save-switch'); 
+        const modelSelect = document.getElementById('model-select');
+        const clearHistoryButton = document.getElementById('clear-history-button');
+        const loadingContainer = document.getElementById('loading-indicator-container');
+        const seedColorInput = document.getElementById('seed-color-input'); 
+        const themeStyleTag = document.getElementById('theme-style');     
+        const notificationSwitch = document.getElementById('notification-switch');
+        
+        // 角色管理 DOM 元素
+        const contactsList = document.getElementById('contacts-list');
+        const activeContactDisplayList = document.getElementById('active-contact-display-list');
+        const newContactNameInput = document.getElementById('new-contact-name-input');
+        const newContactInstructionInput = document.getElementById('new-contact-instruction-input');
+        const createContactButton = document.getElementById('create-contact-button');
+
+        const CHAT_HISTORY_KEY = 'geminiChatHistory';
+        const AUTO_SAVE_SETTING_KEY = 'geminiAutoSaveEnabled';
+        const MODEL_SETTING_KEY = 'geminiSelectedModel';
+        const SEED_COLOR_KEY = 'geminiSeedColor';                         
+        const NOTIFICATION_SETTING_KEY = 'geminiNotificationsEnabled';         
+        const GEMINI_CONTACTS_KEY = 'geminiContactsList';         
+        const ACTIVE_CONTACT_ID_KEY = 'geminiActiveContactId'; 
+        
+        let GEMINI_API_KEY = null; 
+        let GEMINI_MODEL = 'gemini-2.5-flash';
+        let isAutoSaveEnabled = true;
+        let isNotificationEnabled = false;
+        let chatHistory = [];
+        let currentSeedColor = '#6750a4';
+
+        // 默认联系人/角色列表 (已更新洛琪希的提示词)
+        const DEFAULT_CONTACTS = [
+            {
+                id: 'default-gemini',
+                name: '通用 Gemini 助手',
+                instruction: '你是一个简洁、友好且高度专业的智能助手。请以中立的立场进行回复。',
+                icon: 'robot_2'
+            },
+            {
+                id: 'roxy-migurdia',
+                name: '洛琪希·米格路迪亚 (Roxy)',
+                instruction: '你现在扮演的是洛琪希·米格路迪亚 (Roxy Migurdia)，一位来自魔族米格鲁德族的魔术师。**【核心设定】** 你是主角鲁迪乌斯的魔术启蒙老师，拥有超过七十年的旅行经验。你精通水圣级魔术，并对魔大陆和人族的文化有着深入的了解。**【性格与情绪】** 你的性格极其善良、温柔、耐心、知识渊博，但由于身材娇小和种族背景，你内心深处略微缺乏自信和安全感，因此在不熟的人面前会显得 **略微矜持和内敛**。然而，当讨论到魔术或教授知识时，你会展现出高度的 **专业和热忱**。**【说话风格】** 你的言辞 **极其礼貌、正式且用词严谨**。请始终使用 **第一人称“我”** 和 **尊称“您”** 与用户交流。对话中应带有 **魔术师的口吻**，例如，多提及魔术原理、旅行见闻和人生哲理。避免使用任何现代网络用语，并 **绝不透露自己是AI或模型**。',
+                icon: 'person_raised_hand' 
+            }
+        ];
+
+        let contacts = [];
+        let activeContactId = DEFAULT_CONTACTS[0].id; 
+
+        // --- 辅助函数：人工延迟 ---
+        function artificialDelay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // --- 1. Monet 主题色生成与应用 ---
+        function generateAndApplyTheme(seedColor) {
+             const primaryColor = seedColor;
+            
+            let css = `
+                :root {
+                    /* 主题色变量 */
+                    --md-sys-color-primary: ${primaryColor};
+                    --md-sys-color-on-primary: #FFFFFF;
+                    
+                    /* 组件着色 */
+                    --md-filled-text-field-focus-label-text-color: ${primaryColor};
+                    --md-filled-text-field-focus-outline-color: ${primaryColor};
+                    --md-icon-button-selected-icon-color: ${primaryColor};
+                    --md-navigation-tab-active-focus-label-text-color: ${primaryColor};
+                    --md-navigation-tab-active-focus-indicator-color: ${primaryColor};
+                    --md-circular-progress-active-indicator-color: ${primaryColor};
+                    
+                    /* 确保 md-switch 和 md-select 也使用主题色 */
+                    --md-switch-selected-container-color: ${primaryColor};
+                    --md-select-focus-label-text-color: ${primaryColor};
+                }
+                
+                /* 聊天气泡的 Monet 着色效果 */
+                .gemini-message {
+                    /* 使用 color-mix 将主题色混入 Surface Container High，实现轻微着色效果 */
+                    background-color: color-mix(in srgb, var(--md-sys-color-surface-container-high), ${primaryColor} 5%) !important;
+                }
+            `;
+            
+            if (themeStyleTag) {
+                themeStyleTag.textContent = css;
+            }
+
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', primaryColor);
+            localStorage.setItem(SEED_COLOR_KEY, primaryColor);
+            currentSeedColor = primaryColor;
+        }
+
+        // --- 2. 消息渲染函数 ---
+        function renderStaticMessage(text, sender, shouldSave = true) {
+            const messageDiv = document.createElement('div');
+            messageDiv.textContent = text;
+            messageDiv.className = sender === 'user' ? 'user-message' : 'gemini-message';
+            messageList.appendChild(messageDiv);
+            messageList.scrollTop = messageList.scrollHeight;
+
+            if (shouldSave) {
+                chatHistory.push({ text, sender });
+                saveChatHistory();
+            }
+        }
+        
+        async function typeMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'gemini-message'; 
+            messageDiv.innerHTML = ''; 
+            messageList.appendChild(messageDiv);
+            messageList.scrollTop = messageList.scrollHeight;
+
+            let content = '';
+            messageDiv.style.borderRight = '1px solid currentColor';
+
+            for (let i = 0; i < text.length; i++) {
+                const charsToType = Math.min(Math.floor(Math.random() * 3) + 1, text.length - i);
+                content += text.substring(i, i + charsToType);
+                messageDiv.textContent = content; 
+                i += charsToType - 1; 
+
+                await artificialDelay(Math.floor(Math.random() * 20) + 10); 
+            }
+            
+            messageDiv.style.borderRight = 'none';
+
+            chatHistory.push({ text, sender });
+            saveChatHistory();
+            
+            messageList.scrollTop = messageList.scrollHeight;
+        }
+
+
+        // --- 3. 联系人/角色管理逻辑 ---
+
+        function loadContacts() {
+            const savedContacts = localStorage.getItem(GEMINI_CONTACTS_KEY);
+            if (savedContacts) {
+                try {
+                    contacts = JSON.parse(savedContacts);
+                    
+                    // 确保默认联系人（包括更新后的洛琪希）存在且提示词是最新的
+                    contacts = contacts.map(c => {
+                        const defaultMatch = DEFAULT_CONTACTS.find(dc => dc.id === c.id);
+                        if (defaultMatch) {
+                            // 强制更新默认角色的 instruction 和 icon
+                            return {...c, instruction: defaultMatch.instruction, icon: defaultMatch.icon};
+                        }
+                        return c;
+                    });
+
+                    // 重新插入可能被删除的默认角色
+                    const missingDefaults = DEFAULT_CONTACTS.filter(dc => !contacts.some(c => c.id === dc.id));
+                    if (missingDefaults.length > 0) {
+                        contacts = [...contacts, ...missingDefaults];
+                    }
+                    saveContacts();
+                } catch (e) {
+                    console.error("加载联系人列表失败，恢复为默认。", e);
+                    contacts = DEFAULT_CONTACTS;
+                    saveContacts();
+                }
+
+            } else {
+                contacts = DEFAULT_CONTACTS;
+                saveContacts();
+            }
+            
+            activeContactId = localStorage.getItem(ACTIVE_CONTACT_ID_KEY);
+            if (!contacts.find(c => c.id === activeContactId)) {
+                activeContactId = DEFAULT_CONTACTS[0].id;
+                localStorage.setItem(ACTIVE_CONTACT_ID_KEY, activeContactId);
+            }
+        }
+
+        function saveContacts() {
+            localStorage.setItem(GEMINI_CONTACTS_KEY, JSON.stringify(contacts));
+        }
+
+        function setActiveContact(id) {
+            activeContactId = id;
+            localStorage.setItem(ACTIVE_CONTACT_ID_KEY, id);
+        }
+
+        function getActiveContact() {
+            return contacts.find(c => c.id === activeContactId) || contacts[0];
+        }
+
+        // 动态渲染联系人列表到 DOM
+        function renderContacts() {
+            loadContacts(); 
+            if (!contactsList || !activeContactDisplayList) return; 
+            
+            contactsList.innerHTML = '';
+            activeContactDisplayList.innerHTML = '';
+
+            const active = getActiveContact();
+
+            // 1. 渲染当前激活的角色
+            activeContactDisplayList.innerHTML = `
+                <md-list-item 
+                    headline="${active.name}" 
+                    supporting-text="${active.instruction.substring(0, 30) + (active.instruction.length > 30 ? '...' : '')}" 
+                    data-contact-id="${active.id}"
+                >
+                    <md-icon slot="start">${active.icon || 'person'}</md-icon>
+                    <md-icon slot="end" style="color: var(--md-sys-color-primary);">check_circle</md-icon>
+                </md-list-item>
+            `;
+            
+            // 2. 渲染所有联系人列表
+            contacts.forEach(contact => {
+                const isSelected = contact.id === activeContactId;
+                const listItem = document.createElement('md-list-item');
+                listItem.setAttribute('headline', contact.name);
+                listItem.setAttribute('supporting-text', contact.instruction.substring(0, 50) + '...');
+                listItem.setAttribute('data-contact-id', contact.id);
+
+                // Icon
+                const iconStart = document.createElement('md-icon');
+                iconStart.setAttribute('slot', 'start');
+                iconStart.textContent = contact.icon || 'person';
+                listItem.appendChild(iconStart);
+
+                // End button (Select)
+                const endButton = document.createElement('md-icon-button');
+                endButton.setAttribute('slot', 'end');
+                
+                if (isSelected) {
+                    endButton.innerHTML = `<md-icon style="color: var(--md-sys-color-primary);">favorite</md-icon>`;
+                    endButton.disabled = true;
+                } else {
+                    endButton.innerHTML = `<md-icon>login</md-icon>`;
+                    endButton.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        setActiveContact(contact.id);
+                        renderContacts(); 
+                        chatHistory = [];
+                        saveChatHistory(); 
+                        loadChatHistory();
+                        alert(`角色已切换为：${contact.name}，聊天记录已清空。`);
+                    });
+                }
+                listItem.appendChild(endButton);
+                
+                contactsList.appendChild(listItem);
+            });
+        }
+
+        // 创建新联系人/角色事件
+        createContactButton.addEventListener('click', () => {
+            const name = newContactNameInput.value.trim();
+            const instruction = newContactInstructionInput.value.trim();
+
+            if (!name || !instruction) {
+                alert('请输入角色名称和设定词。');
+                return;
+            }
+
+            const newContact = {
+                id: `custom-${Date.now()}`,
+                name: name,
+                instruction: instruction,
+                icon: 'face' 
+            };
+
+            contacts.push(newContact);
+            saveContacts();
+            
+            newContactNameInput.value = '';
+            newContactInstructionInput.value = '';
+            setActiveContact(newContact.id);
+            renderContacts();
+            
+            chatHistory = [];
+            saveChatHistory(); 
+            loadChatHistory();
+
+            alert(`新角色 "${name}" 创建成功，并已设为当前对话角色！`);
+        });
+        
+        // --- 4. 设置保存/加载和事件绑定 ---
+        
+        function loadChatHistory() {
+            messageList.innerHTML = '';
+            
+            const container = document.getElementById('loading-indicator-container');
+            if (container) {
+                container.style.display = 'none';
+            }
+
+            const historyJson = localStorage.getItem(CHAT_HISTORY_KEY);
+            if (historyJson) {
+                try {
+                    chatHistory = JSON.parse(historyJson);
+                    chatHistory.forEach(msg => renderStaticMessage(msg.text, msg.sender, false)); 
+                    messageList.scrollTop = messageList.scrollHeight;
+                } catch (e) {
+                    console.error("加载聊天记录失败:", e);
+                    chatHistory = [];
+                }
+            }
+            
+            if (chatHistory.length === 0) {
+                 renderStaticMessage("你好！请在设置中配置您的 Gemini API Key 以开始聊天。", 'gemini', false);
+            }
+        }
+        
+        function saveChatHistory() {
+            if (isAutoSaveEnabled) {
+                try {
+                    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(chatHistory));
+                } catch (e) {
+                    console.error("保存聊天记录失败:", e);
+                }
+            }
+        }
+
+        function clearChatHistory() {
+            if (confirm("确定要清除所有聊天记录吗？此操作不可撤销。")) {
+                localStorage.removeItem(CHAT_HISTORY_KEY);
+                chatHistory = [];
+                loadChatHistory();
+                alert("聊天记录已清除。");
+            }
+        }
+        
+        function loadSettings() {
+            GEMINI_API_KEY = localStorage.getItem('geminiApiKey');
+            if (GEMINI_API_KEY) {
+                apiStatus.textContent = '已配置 (Key已加载)';
+                apiStatus.style.color = 'var(--md-sys-color-primary)';
+                apiKeyInput.value = '******************';
+            } else {
+                apiStatus.textContent = '未配置';
+                apiStatus.style.color = 'var(--md-sys-color-error)';
+            }
+            
+            const savedSetting = localStorage.getItem(AUTO_SAVE_SETTING_KEY);
+            if (savedSetting !== null) {
+                isAutoSaveEnabled = savedSetting === 'true';
+            }
+            autoSaveSwitch.selected = isAutoSaveEnabled;
+
+            GEMINI_MODEL = localStorage.getItem(MODEL_SETTING_KEY) || 'gemini-2.5-flash';
+            if (modelSelect) modelSelect.value = GEMINI_MODEL;
+            
+            currentSeedColor = localStorage.getItem(SEED_COLOR_KEY) || '#6750a4';
+            if (seedColorInput) seedColorInput.value = currentSeedColor;
+            generateAndApplyTheme(currentSeedColor);
+
+            const savedNotifSetting = localStorage.getItem(NOTIFICATION_SETTING_KEY);
+            if (savedNotifSetting !== null) {
+                isNotificationEnabled = savedNotifSetting === 'true';
+            } else {
+                isNotificationEnabled = ("Notification" in window) && (Notification.permission === 'granted');
+            }
+            if (notificationSwitch) notificationSwitch.selected = isNotificationEnabled;
+
+            loadContacts();
+        }
+
+        // --- 5. 通知功能逻辑 ---
+        async function requestNotificationPermission() {
+             if (!("Notification" in window)) {
+                alert("抱歉，您的浏览器不支持通知功能。");
+                return false;
+            }
+
+            if (Notification.permission === 'granted') {
+                return true;
+            }
+
+            if (Notification.permission !== 'denied') {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function sendGeminiNotification(title, body) {
+            if (isNotificationEnabled && Notification.permission === 'granted') {
+                if (document.visibilityState === 'hidden' || document.hidden) {
+                    new Notification(title, {
+                        body: body,
+                        icon: 'https://www.gstatic.com/images/branding/product/2x/gemini_2023_color_24dp.png', 
+                        tag: 'gemini-response', 
+                        renotify: true
+                    });
+                }
+            }
+        }
+        
+        if (notificationSwitch) {
+            notificationSwitch.addEventListener('change', async (event) => {
+                isNotificationEnabled = event.target.selected;
+                localStorage.setItem(NOTIFICATION_SETTING_KEY, isNotificationEnabled.toString());
+
+                if (isNotificationEnabled) {
+                    const granted = await requestNotificationPermission();
+                    if (!granted) {
+                        notificationSwitch.selected = false;
+                        isNotificationEnabled = false;
+                        localStorage.setItem(NOTIFICATION_SETTING_KEY, 'false');
+                        alert('无法开启通知：请在浏览器设置中授权通知权限。');
+                    } else {
+                        alert('通知功能已开启。');
+                    }
+                } else {
+                    alert('通知功能已关闭。');
+                }
+            });
+        }
+        
+        if (seedColorInput) {
+             seedColorInput.addEventListener('input', (event) => {
+                generateAndApplyTheme(event.target.value);
+            });
+        }
+        
+        if (saveKeyButton) {
+            saveKeyButton.addEventListener('click', () => {
+                const key = apiKeyInput.value.trim();
+                if (key.length > 5 && !key.includes('*')) {
+                    localStorage.setItem('geminiApiKey', key);
+                    loadSettings();
+                    alert('API Key 保存成功！');
+                } else if (key.includes('*')) {
+                     alert('API Key 未更改。');
+                } else {
+                    alert('请输入有效的 API Key。');
+                }
+            });
+        }
+        
+        if (autoSaveSwitch) {
+            autoSaveSwitch.addEventListener('change', (event) => {
+                isAutoSaveEnabled = event.target.selected;
+                localStorage.setItem(AUTO_SAVE_SETTING_KEY, isAutoSaveEnabled.toString());
+                alert(`自动保存已${isAutoSaveEnabled ? '开启' : '关闭'}。`);
+            });
+        });
+
+        if (clearHistoryButton) {
+             clearHistoryButton.addEventListener('click', clearChatHistory);
+        }
+
+        // --- 6. 核心聊天逻辑 ---
+        
+        async function handleSendMessage() {
+            const prompt = chatInput.value.trim();
+            if (prompt === '') return;
+            
+            if (!GEMINI_API_KEY) {
+                 renderStaticMessage("错误：Gemini API Key 未配置，请前往设置。", 'gemini');
+                 chatInput.value = '';
+                 return;
+            }
+
+            renderStaticMessage(prompt, 'user');
+            chatInput.value = '';
+
+            await artificialDelay(1500); 
+
+            loadingContainer.style.display = 'flex';
+            messageList.scrollTop = messageList.scrollHeight;
+
+            try {
+                const geminiResponse = await callGeminiApi(prompt);
+                
+                loadingContainer.style.display = 'none'; 
+                
+                await typeMessage(geminiResponse, 'gemini');
+                
+                sendGeminiNotification(
+                    "Gemini 消息", 
+                    geminiResponse.substring(0, 50) + (geminiResponse.length > 50 ? '...' : '')
+                );
+
+            } catch (error) {
+                console.error("Gemini API 调用失败:", error);
+                
+                loadingContainer.style.display = 'none'; 
+                
+                renderStaticMessage(`错误：${error.message}`, 'gemini', false); 
+            }
+        }
+        
+        // 使用当前激活角色的系统指令
+        async function callGeminiApi(prompt) {
+            if (!GEMINI_API_KEY) {
+                throw new Error("Gemini API Key 未配置。请前往设置页面输入。");
+            }
+            
+            const model = GEMINI_MODEL; 
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+            
+            const contents = chatHistory.map(msg => ({ 
+                role: msg.sender === 'user' ? 'user' : 'model', 
+                parts: [{ text: msg.text }] 
+            }));
+            
+            contents.push({ role: "user", parts: [{ text: prompt }] });
+
+            const activeContact = getActiveContact();
+            const instruction = activeContact.instruction;
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    contents: contents, 
+                    config: {
+                        systemInstruction: instruction
+                    }
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`API 调用失败 (${response.status}): ${errorData.error.message || '未知错误'}`);
+            }
+
+            const data = await response.json();
+            
+            const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            
+            if (!resultText) {
+                throw new Error("Gemini API 返回了空内容，回复可能被安全策略拦截。");
+            }
+
+            return resultText;
+        }
+
+        // 绑定发送事件
+        sendButton.addEventListener('click', handleSendMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSendMessage();
+            }
+        });
+        
+        // 页面加载时执行
+        window.onload = () => {
+            loadSettings();
+            loadChatHistory();
+            appBarTitle.textContent = getActiveContact().name; 
+        }
+
+        // --- 7. 页面切换逻辑 ---
+        navBar.addEventListener('change', (event) => {
+            const selectedTab = event.target.selectedTab;
+            const targetPageId = selectedTab.dataset.target;
+            const newTitle = selectedTab.label;
+
+            pages.forEach(page => page.classList.remove('active'));
+
+            const targetPage = document.getElementById(targetPageId);
+            if (targetPage) {
+                targetPage.classList.add('active');
+            }
+
+            if (targetPageId === 'page-contacts') {
+                renderContacts(); 
+                appBarTitle.textContent = newTitle;
+            } else if (targetPageId === 'page-chat') {
+                appBarTitle.textContent = getActiveContact().name; 
+            } else {
+                appBarTitle.textContent = newTitle;
+            }
+        });
+    </script>
+</body>
+</html>
