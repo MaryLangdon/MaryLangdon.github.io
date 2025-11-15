@@ -1,643 +1,282 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-// 导入所有需要的图标
-import { 
-    Sun, Cloud, Zap, Droplet, Wind, Gauge, Sunrise, Sunset, Clock, MapPin, 
-    Moon, X, ChevronDown, ChevronUp, Loader 
-} from 'lucide-react';
-
-// --- 配置 (Configuration) ---
-
-// ** ⚠️ 重要的：请在此处填入您的 OpenWeatherMap API Key **
-// 如果留空，应用将使用高保真模拟数据。
-const OPEN_WEATHER_API_KEY = ""; 
-const API_BASE_URL = "https://api.openweathermap.org/data/2.5/weather";
-
-// 简化后的主题配置
-const WEATHER_THEMES = {
-    'clear': {
-        'primary-container': 'bg-amber-100', 'on-primary-container': 'text-amber-900', 'icon-color': 'text-amber-500', 'progress-color': 'text-amber-600',
-        'dark-primary-container': 'dark:bg-amber-800', 'dark-on-primary-container': 'dark:text-amber-100', 'dark-icon-color': 'dark:text-amber-300', 'dark-progress-color': 'dark:text-amber-400',
-    },
-    'cloudy': {
-        'primary-container': 'bg-slate-200', 'on-primary-container': 'text-slate-900', 'icon-color': 'text-slate-600', 'progress-color': 'text-slate-600',
-        'dark-primary-container': 'dark:bg-slate-700', 'dark-on-primary-container': 'dark:text-slate-100', 'dark-icon-color': 'dark:text-slate-400', 'dark-progress-color': 'dark:text-slate-400',
-    }
-};
-
-const ROXY_QUOTES = {
-    'clear': { day: "天气晴朗，正是远行的好日子！希望这段旅程充满惊喜。", night: "月色真美。即使在深夜，也要保持对冒险的渴望。" },
-    'cloudy': { day: "多云的天气最适合思考魔法和策略了。专注，然后向前。", night: "云层遮住了星光，但不要紧，我心中的魔力之光永不熄灭。" },
-};
-
-// 中国和日本城市行政区划数据
-const CITIES_DATA = {
-    "直辖市 (Municipalities)": [ "北京 (Beijing)", "上海 (Shanghai)", "天津 (Tianjin)", "重庆 (Chongqing)" ],
-    "华东地区 (East China)": [ "杭州 (Hangzhou)", "南京 (Nanjing)", "福州 (Fuzhou)", "济南 (Jinan)" ],
-    "华南地区 (South China)": [ "广州 (Guangzhou)", "深圳 (Shenzhen)", "海口 (Haikou)" ],
-    "日本地区 (Japan Region)": [ "东京 (Tokyo)", "大阪 (Osaka)", "京都 (Kyoto)", "札幌 (Sapporo)", "福冈 (Fukuoka)" ],
-    "华北/西北/东北地区": [ "西安 (Xi'an)", "兰州 (Lanzhou)", "乌鲁木齐 (Ürümqi)", "沈阳 (Shenyang)", "哈尔滨 (Harbin)" ],
-};
-
-// 默认初始数据
-const INITIAL_CITY = "上海 (Shanghai)";
-
-// --- 核心工具函数 (Utility Functions) ---
-
-/**
- * 将 OpenWeatherMap 的 weather main 字段映射为应用的简化类型
- */
-const mapWeatherType = (main) => {
-    main = main.toLowerCase();
-    if (main.includes('clear') || main.includes('sun')) return 'clear';
-    // 将 Clouds, Haze, Fog, Mist 都视为 'cloudy' 主题
-    if (main.includes('clouds') || main.includes('haze') || main.includes('mist') || main.includes('fog')) return 'cloudy';
-    return 'cloudy'; 
-};
-
-/**
- * 将 UNIX 时间戳转换为本地时间字符串 (注意：OpenWeatherMap的sys时间戳是UTC)
- * 这里使用 UTC 时间戳 + 时区偏移量来计算正确的本地时间。
- */
-const formatTimestamp = (timestamp, timezoneOffset) => {
-    // timestamp: UTC时间戳 (秒), timezoneOffset: 城市相对于UTC的秒数偏移量
-    const localDate = new Date((timestamp + timezoneOffset) * 1000);
-    
-    // 格式化为 HH:mm，强制使用 UTC/GMT，因为我们已经通过 offset 调整了时间
-    return localDate.toUTCString().split(' ')[4].substring(0, 5);
-};
-
-/**
- * 模拟未来7天预报数据
- */
-const generateMockForecast = (baseTemp, type) => {
-    return Array(7).fill().map((_, i) => ({
-        day: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][(new Date().getDay() + i) % 7],
-        temp: Number(baseTemp) + Math.floor(Math.random() * 5 - 2), 
-        type: Math.random() > 0.7 ? (type === 'clear' ? 'cloudy' : 'clear') : type,
-    }));
-};
-
-/**
- * 根据城市生成高保真模拟数据 (当 API Key 缺失时使用)
- */
-const generateMockWeather = (fullCityName) => {
-    const cityName = fullCityName.split(' ')[0];
-    let baseTemp, type, desc;
-
-    if (cityName.includes('哈尔滨') || cityName.includes('札幌')) {
-        baseTemp = Math.floor(Math.random() * (22 - 18) + 18);
-        type = 'cloudy';
-        desc = "阴天多云，洛琪希建议带伞。";
-    } else if (cityName.includes('广州') || cityName.includes('海口') || cityName.includes('东京')) {
-        baseTemp = Math.floor(Math.random() * (32 - 28) + 28);
-        type = 'clear';
-        desc = "晴空万里，魔法值充满！";
-    } else { 
-        baseTemp = Math.floor(Math.random() * (29 - 25) + 25);
-        type = 'clear';
-        desc = "主要晴朗，旅途顺利。";
-    }
-
-    const max = Number(baseTemp) + Math.floor(Math.random() * 3 + 1);
-    const min = Number(baseTemp) - Math.floor(Math.random() * 3 + 1);
-    const isDaytime = new Date().getHours() >= 6 && new Date().getHours() < 18;
-
-    return {
-        city: cityName,
-        temp: String(baseTemp),
-        max: String(max),
-        min: String(min),
-        desc: desc,
-        humidity: Math.floor(Math.random() * (70 - 40) + 40),
-        wind: (Math.random() * 4 + 1).toFixed(1),
-        pressure: Math.floor(Math.random() * (1020 - 1000) + 1000),
-        apparentTemp: String(baseTemp - 1),
-        weatherType: type,
-        isDaytime: isDaytime,
-        // 模拟时间使用当前本地时间
-        updateTime: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }),
-        sunrise: "06:15",
-        sunset: "17:45",
-        forecast: generateMockForecast(baseTemp, type)
-    };
-};
-
-// --- API Fetching (API 数据获取) ---
-
-/**
- * 尝试从 OpenWeatherMap 获取数据，失败则回退到模拟数据
- */
-const fetchWeatherData = async (fullCityName, apiKey) => {
-    const cityNameEnglish = fullCityName.split('(')[1]?.replace(')', '')?.trim() || fullCityName.split(' ')[0];
-    
-    // 如果没有 API Key，直接返回模拟数据
-    if (!apiKey) {
-        return generateMockWeather(fullCityName);
-    }
-
-    const url = `${API_BASE_URL}?q=${cityNameEnglish}&units=metric&lang=zh_cn&appid=${apiKey}`;
-    
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`API 返回错误: ${response.status} - ${response.statusText}`);
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>洛琪希的柳州天气预报</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Inter font for clean typography -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light gray background for MD3 feel */
         }
-        const data = await response.json();
-        
-        // 映射 OpenWeatherMap 响应到应用内部结构
-        const currentTimestamp = Math.floor(Date.now() / 1000);
-        const sunriseTime = data.sys.sunrise;
-        const sunsetTime = data.sys.sunset;
-        
-        const isDaytime = currentTimestamp > sunriseTime && currentTimestamp < sunsetTime;
-        const mainWeatherType = mapWeatherType(data.weather[0].main);
+        .roxy-gradient {
+            /* Roxy's theme colors: Blue/Purple magic */
+            background-image: linear-gradient(135deg, #4c51bf 0%, #6366f1 100%);
+        }
+    </style>
+    <script>
+        // Tailwind configuration for custom colors (MD3 inspired)
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-blue': '#6366f1', // Indigo/Violet for main accent
+                        'surface-light': '#ffffff',
+                        'surface-dark': '#e0e7ff', // Light blue background for cards
+                        'on-surface': '#1f2937',
+                    },
+                    boxShadow: {
+                        'md3': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                        'md3-lg': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
 
-        return {
-            city: data.name,
-            temp: data.main.temp.toFixed(0),
-            max: data.main.temp_max.toFixed(0),
-            min: data.main.temp_min.toFixed(0),
-            desc: data.weather[0].description.charAt(0).toUpperCase() + data.weather[0].description.slice(1), // 首字母大写
-            humidity: data.main.humidity,
-            wind: data.wind.speed.toFixed(1),
-            pressure: data.main.pressure,
-            apparentTemp: data.main.feels_like.toFixed(0),
-            weatherType: mainWeatherType,
-            isDaytime: isDaytime,
-            // 实时API数据通常不需要更新时间，但我们保留格式，使用当前本地时间
-            updateTime: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }),
-            sunrise: formatTimestamp(data.sys.sunrise, data.timezone),
-            sunset: formatTimestamp(data.sys.sunset, data.timezone),
-            // 真实 API 通常只提供当天预报，这里仍使用模拟预报以保持界面完整
-            forecast: generateMockForecast(data.main.temp.toFixed(0), mainWeatherType)
+    <!-- Main Container Card (MD3 Style) -->
+    <div class="w-full max-w-2xl bg-surface-light rounded-3xl shadow-md3-lg overflow-hidden transition-all duration-300">
+        
+        <!-- Header: Roxy Theme -->
+        <div class="roxy-gradient text-white p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between rounded-t-3xl">
+            <div class="text-center sm:text-left mb-4 sm:mb-0">
+                <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">
+                    洛琪希的<span id="location-display">柳州</span>天气
+                </h1>
+                <p class="text-sm sm:text-lg opacity-90 font-light">
+                    “愿您今天也沐浴在魔力之光下”
+                </p>
+            </div>
+            <!-- Roxy Icon Placeholder (Magic Staff / Star) -->
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-16 h-16 sm:w-20 sm:h-20 text-white opacity-80">
+                <path fill-rule="evenodd" d="M3.75 6.75a3 3 0 0 0 3-3h.007a.75.75 0 0 1 .59 1.203l-1.558 1.559a.15.15 0 0 1-.225 0V4.5A.75.75 0 0 1 6 3.75 3 3 0 0 0 3 6.75Z" clip-rule="evenodd" />
+                <path fill-rule="evenodd" d="m11.546 8.329 7.746-.775a.75.75 0 0 0 .708-.708L19.5 7.5a.75.75 0 0 0-.75-.75h-2.25a.75.75 0 0 1-.53-.22L13.195 4.3a.75.75 0 0 0-1.06 0L9.48 6.53a.75.75 0 0 1-.53.22H6.75a.75.75 0 0 0-.75.75v.005l.004.05a7.7 7.7 0 0 1 1.708 7.214l-.235 1.175a.75.75 0 0 0 .584.854l1.378.276c.492.098.995.148 1.5.148h.002c.866 0 1.714-.14 2.518-.418l2.905-.969a.75.75 0 0 0 .474-.698V14.4l-1.465-1.466a2.25 2.25 0 0 1-1.282-.992l-.11-.224a1.75 1.75 0 0 0-3.204-.32l-.248.992a.15.15 0 0 1-.216.082l-1.071-.714a.15.15 0 0 0-.174.03l-.442.441a.75.75 0 0 1-.53.22H6.75a.75.75 0 0 0-.75.75v1.5a.75.75 0 0 0 1.5 0v-1.5h.721c.216 0 .428-.052.624-.153l.492-.246a.15.15 0 0 1 .158-.023l.534.267a1.75 1.75 0 0 0 3.204-.32l.22-.88a.75.75 0 0 1 .804-.619l1.107.554a.75.75 0 0 0 .694.072l2.368-1.579a.75.75 0 0 0 .22-.644Z" clip-rule="evenodd" />
+            </svg>
+        </div>
+
+        <!-- Loading / Error Message Area -->
+        <div id="loading-spinner" class="p-8 text-center" style="display: none;">
+            <div class="animate-spin rounded-full h-12 w-12 border-4 border-primary-blue border-t-transparent mx-auto mb-4"></div>
+            <p class="text-on-surface">正在向魔界发送天气请求...</p>
+        </div>
+
+        <div id="error-message" class="p-8 text-center text-red-600 bg-red-100 hidden rounded-b-3xl">
+            <p class="font-semibold">错误：无法获取天气数据。</p>
+            <p class="text-sm mt-2">请检查 API 地址或网络连接是否正常。</p>
+        </div>
+
+        <!-- Weather Content Cards -->
+        <div id="weather-content" class="p-6 sm:p-8 space-y-6 hidden">
+            
+            <!-- Main Temperature Card -->
+            <div class="flex flex-col sm:flex-row items-center justify-center bg-surface-dark p-6 rounded-2xl shadow-md3">
+                <div class="flex-shrink-0 mb-4 sm:mb-0 sm:mr-6 text-primary-blue">
+                    <!-- Icon Placeholder - will be updated by JS -->
+                    <h2 id="weather-icon" class="text-7xl">---</h2> 
+                </div>
+                <div class="text-center sm:text-left">
+                    <!-- Open-Meteo does not provide descriptive summaries easily, so we show the current time and temperature. -->
+                    <p id="description" class="text-3xl font-semibold text-on-surface">当前天气状况</p>
+                    <div class="flex items-baseline mt-1">
+                        <span id="temp" class="text-6xl font-extrabold text-on-surface">--°C</span>
+                        <span id="weather-code" class="ml-4 text-lg text-gray-600">--</span>
+                    </div>
+                    <p id="temp-range" class="text-md text-gray-500 mt-1">今日：最低 --°C / 最高 --°C</p>
+                </div>
+            </div>
+
+            <!-- Detail Grid (Two Columns) -->
+            <div class="grid grid-cols-2 gap-4">
+                
+                <!-- Wind Speed Card -->
+                <div class="bg-surface-dark p-4 rounded-2xl shadow-md3 flex flex-col items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 text-primary-blue mb-1">
+                        <path d="M11.5 2.75a.75.75 0 0 1 .75.75v5.437l.794-.794a.75.75 0 1 1 1.06 1.06L12.56 12.31l-3.375-3.375a.75.75 0 1 1 1.06-1.06l.794.793V3.5a.75.75 0 0 1 .75-.75Z" />
+                        <path d="M4.5 13.5a.75.75 0 0 0-.75.75v5.25c0 .414.336.75.75.75h15c.414 0 .75-.336.75-.75v-5.25a.75.75 0 0 0-1.5 0v5.25h-13.5v-5.25a.75.75 0 0 0-.75-.75Z" />
+                    </svg>
+                    <p class="text-sm text-gray-600">风速</p>
+                    <p id="wind-speed" class="text-xl font-bold text-on-surface">-- km/h</p>
+                </div>
+                
+                <!-- Humidity Card -->
+                <div class="bg-surface-dark p-4 rounded-2xl shadow-md3 flex flex-col items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 text-primary-blue mb-1">
+                        <path d="M12 2.25a6.75 6.75 0 0 0-6.75 6.75c0 3.784-1.5 6.425-3.084 7.641A4.5 4.5 0 0 0 5.625 22.5h12.75a4.5 4.5 0 0 0 3.084-1.859c-1.584-1.216-3.084-3.857-3.084-7.641A6.75 6.75 0 0 0 12 2.25Z" />
+                    </svg>
+                    <p class="text-sm text-gray-600">相对湿度</p>
+                    <p id="humidity" class="text-xl font-bold text-on-surface">-- %</p>
+                </div>
+                
+                <!-- Pressure Card -->
+                <div class="bg-surface-dark p-4 rounded-2xl shadow-md3 flex flex-col items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 text-primary-blue mb-1">
+                        <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm4.28 10.28a.75.75 0 0 0 0-1.06l-3.5-3.5a.75.75 0 0 0-1.06 0l-3.5 3.5a.75.75 0 0 0 1.06 1.06l2.97-2.97v6.44a.75.75 0 0 0 1.5 0v-6.44l2.97 2.97Z" clip-rule="evenodd" />
+                    </svg>
+                    <p class="text-sm text-gray-600">海平面气压</p>
+                    <p id="pressure" class="text-xl font-bold text-on-surface">-- hPa</p>
+                </div>
+                
+                <!-- Apparent Temperature Card -->
+                <div class="bg-surface-dark p-4 rounded-2xl shadow-md3 flex flex-col items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 text-primary-blue mb-1">
+                        <path d="M16.125 10.5C18.687 10.5 21 12.813 21 15.75c0 2.417-1.156 4.706-2.934 6.138A7.323 7.323 0 0 1 12 22.5c-2.43 0-4.706-1.157-6.138-2.934-1.782-1.432-2.934-3.721-2.934-6.138 0-2.937 2.313-5.25 4.875-5.25a.75.75 0 0 1 0 1.5c-2.094 0-3.75 1.706-3.75 3.75 0 2.327 1.144 4.148 2.662 5.344a6.772 6.772 0 0 0 8.176 0c1.518-1.196 2.662-3.017 2.662-5.344 0-2.042-1.656-3.714-3.75-3.75a.75.75 0 0 1 0-1.5ZM17.16 8.368c.07-.376-.046-.74-.326-1.02a.75.75 0 0 0-1.06 0l-.364.363L14.73 7.02l.363-.364a.75.75 0 0 0 0-1.06 3.01 3.01 0 0 0-3.32-.423L11 5.176V3.75a.75.75 0 0 0-1.5 0v1.426l-.014.004a3.01 3.01 0 0 0-3.32-.423.75.75 0 0 0 0 1.06l.363.364-.364.364a.75.75 0 0 0 0 1.06c.28.28.655.396 1.02.326.368-.07.697-.246.953-.473.256-.227.46-.497.604-.803a.15.15 0 0 1 .277.01c.214.46.596.868 1.05.795a.15.15 0 0 1 .155.153V10.5a.75.75 0 0 0 1.5 0V8.924c.036.007.07.014.105.014.368 0 .736-.18 1.02-.459.28-.28.396-.656.326-1.02Z" />
+                    </svg>
+                    <p class="text-sm text-gray-600">体感温度</p>
+                    <p id="apparent-temp" class="text-xl font-bold text-on-surface">--°C</p>
+                </div>
+
+            </div>
+            
+            <p class="text-sm text-gray-400 text-center pt-4">数据更新于: <span id="update-time">--</span></p>
+
+        </div>
+
+        <div id="footer-note" class="p-4 text-xs text-center text-gray-500 border-t mt-4 rounded-b-3xl">
+            数据来源: Open-Meteo.com (免费开放 API，无需密钥)
+        </div>
+
+    </div>
+
+    <!-- JavaScript for Fetching Weather Data -->
+    <script>
+        // Open-Meteo API URL for current weather data
+        const LATITUDE = 24.33; // 柳州大致纬度
+        const LONGITUDE = 109.41; // 柳州大致经度
+        // 请求当前温度、体感温度、天气代码、海平面气压、相对湿度、风速和每日的最高最低温度
+        const API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${LATITUDE}&longitude=${LONGITUDE}&current=temperature_2m,apparent_temperature,weather_code,surface_pressure,relative_humidity_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=Asia%2FSingapore`;
+
+        const locationDisplay = document.getElementById('location-display');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const errorMessageDiv = document.getElementById('error-message');
+        const weatherContentDiv = document.getElementById('weather-content');
+        const descriptionEl = document.getElementById('description');
+        const tempEl = document.getElementById('temp');
+        const weatherCodeEl = document.getElementById('weather-code');
+        const tempRangeEl = document.getElementById('temp-range');
+        const windSpeedEl = document.getElementById('wind-speed');
+        const humidityEl = document.getElementById('humidity');
+        const pressureEl = document.getElementById('pressure');
+        const apparentTempEl = document.getElementById('apparent-temp');
+        const updateTimeEl = document.getElementById('update-time');
+        const weatherIconEl = document.getElementById('weather-icon');
+
+        /**
+         * WMO Weather Interpretation Codes (WMO CODE) to Chinese description and Emoji.
+         * Open-Meteo uses WMO codes instead of simple strings.
+         * @param {number} code - The WMO weather code.
+         * @returns {{description: string, emoji: string}} Description and Emoji.
+         */
+        function getWeatherWmoInfo(code) {
+            switch (code) {
+                case 0: return { description: '晴朗', emoji: '☀️' };
+                case 1: return { description: '多云为主', emoji: '🌤️' };
+                case 2: return { description: '部分多云', emoji: '⛅' };
+                case 3: return { description: '阴天', emoji: '☁️' };
+                case 45: return { description: '雾', emoji: '🌫️' };
+                case 48: return { description: '雾凇', emoji: '🌫️❄️' };
+                case 51: return { description: '小雨', emoji: '🌧️' };
+                case 53: return { description: '中雨', emoji: '🌧️' };
+                case 55: return { description: '大雨', emoji: '🌧️' };
+                case 61: return { description: '小到中雨', emoji: '☔' };
+                case 63: return { description: '中到大雨', emoji: '☔' };
+                case 65: return { description: '暴雨', emoji: '☔' };
+                case 71: return { description: '小雪', emoji: '🌨️' };
+                case 73: return { description: '中雪', emoji: '🌨️' };
+                case 75: return { description: '大雪', emoji: '🌨️' };
+                case 80: return { description: '阵雨', emoji: '🌦️' };
+                case 81: return { description: '中等阵雨', emoji: '🌦️' };
+                case 82: return { description: '强烈阵雨', emoji: '⛈️' };
+                case 95: return { description: '雷暴', emoji: '⚡' };
+                default: return { description: '未知天气代码', emoji: '❓' };
+            }
+        }
+
+        /**
+         * Displays an error message and hides the content.
+         * @param {string} message - The error message to display in the console.
+         */
+        function showError(message) {
+            console.error("Weather Fetch Error:", message);
+            loadingSpinner.style.display = 'none';
+            weatherContentDiv.classList.add('hidden');
+            errorMessageDiv.classList.remove('hidden');
+        }
+
+        /**
+         * Fetches weather data from Open-Meteo API (free and no key required).
+         */
+        async function fetchWeather() {
+            loadingSpinner.style.display = 'block';
+            errorMessageDiv.classList.add('hidden');
+            weatherContentDiv.classList.add('hidden');
+            
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP Error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // 检查是否包含预期的当前天气数据
+                if (!data.current || !data.daily || !data.daily.time || data.daily.time.length === 0) {
+                    throw new Error("API返回数据格式不正确，缺少当前或每日数据。");
+                }
+                
+                const current = data.current;
+                const daily = data.daily;
+
+                // --- 提取和更新 UI ---
+                
+                const weatherInfo = getWeatherWmoInfo(current.weather_code);
+                
+                // 主显示
+                const temp = Math.round(current.temperature_2m);
+                const apparentTemp = Math.round(current.apparent_temperature);
+                
+                // 每日最高温和最低温（Open-Meteo返回数组，取第一个元素即今天）
+                const minTemp = Math.round(daily.temperature_2m_min[0]);
+                const maxTemp = Math.round(daily.temperature_2m_max[0]);
+                
+                descriptionEl.textContent = weatherInfo.description;
+                tempEl.textContent = `${temp}°C`;
+                weatherCodeEl.textContent = `WMO 码: ${current.weather_code}`;
+                tempRangeEl.textContent = `今日：最低 ${minTemp}°C / 最高 ${maxTemp}°C`;
+                weatherIconEl.textContent = weatherInfo.emoji; // Set the emoji
+
+                // 细节卡片
+                // Open-Meteo风速默认为 km/h，相对湿度为 %，气压为 hPa。
+                windSpeedEl.textContent = `${current.wind_speed_10m.toFixed(1)} km/h`;
+                humidityEl.textContent = `${current.relative_humidity_2m} %`;
+                pressureEl.textContent = `${current.surface_pressure.toFixed(0)} hPa`; 
+                apparentTempEl.textContent = `${apparentTemp}°C`; 
+                
+                // 更新时间
+                const date = new Date(current.time);
+                // 格式化时间为本地时间字符串
+                updateTimeEl.textContent = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
+
+                // 显示内容
+                loadingSpinner.style.display = 'none';
+                weatherContentDiv.classList.remove('hidden');
+
+            } catch (error) {
+                locationDisplay.textContent = '错误';
+                showError(error.message);
+            }
+        }
+
+        // Initialize on load
+        window.onload = function() {
+            fetchWeather();
         };
 
-    } catch (error) {
-        console.error("无法获取实时天气数据，回退到模拟数据:", error);
-        throw new Error("实时数据获取失败，已切换到模拟模式。");
-    }
-};
-
-
-const getWeatherIcon = (type) => {
-  switch (type) {
-    case 'clear': return Sun;
-    case 'cloudy': return Cloud;
-    default: return Zap; 
-  }
-};
-
-const getThemeClasses = (type, isDaytime) => {
-    const theme = WEATHER_THEMES[type] || WEATHER_THEMES.cloudy;
-    const primaryClass = `${theme['primary-container']} ${theme['dark-primary-container']}`;
-    const onPrimaryClass = `${theme['on-primary-container']} ${theme['dark-on-primary-container']}`;
-    const iconClass = `${theme['icon-color']} ${theme['dark-icon-color']}`;
-    const progressClass = `${theme['progress-color']} ${theme['dark-progress-color']}`;
-    
-    const mode = isDaytime ? 'day' : 'night';
-    const quote = (ROXY_QUOTES[type] || ROXY_QUOTES.cloudy)[mode];
-
-    return { primaryClass, onPrimaryClass, iconClass, progressClass, quote };
-};
-
-// --- 加载骨架屏组件 (Loading Skeleton Component) ---
-
-const LoadingSkeleton = () => (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-pulse">
-        {/* Primary Card Skeleton */}
-        <div className="p-8 rounded-[2.5rem] shadow-xl bg-gray-200 dark:bg-gray-800 md:col-span-2 h-72">
-            <div className="h-8 bg-gray-300 dark:bg-gray-700 w-3/4 mb-4 rounded-full"></div>
-            <div className="h-16 bg-gray-300 dark:bg-gray-700 w-1/3 mb-8 rounded-full"></div>
-            <div className="h-6 bg-gray-300 dark:bg-gray-700 w-1/2 rounded-full"></div>
-        </div>
-        
-        {/* Forecast Card Skeleton */}
-        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 h-72">
-            <div className="h-4 bg-gray-300 dark:bg-gray-700 w-1/2 mb-6 rounded-full"></div>
-            <div className="space-y-4">
-                {[...Array(5)].map((_, i) => (
-                    <div key={i} className="flex justify-between items-center">
-                        <div className="h-4 bg-gray-300 dark:bg-gray-700 w-1/4 rounded-full"></div>
-                        <div className="h-4 bg-gray-300 dark:bg-gray-700 w-1/4 rounded-full"></div>
-                    </div>
-                ))}
-            </div>
-        </div>
-
-        {/* Other Cards Skeleton */}
-        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 h-40"></div>
-        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 h-40"></div>
-        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 h-40"></div>
-    </div>
-);
-
-// --- 城市折叠菜单组件 (Location Collapsible Menu Component) ---
-
-const LocationMenu = ({ onSelect, onClose, currentCity }) => {
-    const [openProvince, setOpenProvince] = useState("日本地区 (Japan Region)"); // 默认展开日本
-
-    const toggleProvince = (provinceName) => {
-        setOpenProvince(openProvince === provinceName ? null : provinceName);
-    };
-
-    return (
-        <div className="h-full overflow-y-auto p-6">
-            <div className="flex justify-between items-center mb-6 border-b pb-4 sticky top-0 bg-white dark:bg-gray-900 z-10">
-                <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">选择城市</h2>
-                <button 
-                    onClick={onClose} 
-                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                    aria-label="关闭菜单"
-                >
-                    <X className="w-6 h-6 text-gray-600 dark:text-gray-300" />
-                </button>
-            </div>
-            
-            <div className="space-y-4">
-                {Object.entries(CITIES_DATA).map(([province, cities]) => (
-                    <div key={province} className="bg-gray-50 dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden transition-all duration-300">
-                        {/* 1. 折叠标题 (MD3 Primary Container Style) */}
-                        <button 
-                            onClick={() => toggleProvince(province)}
-                            className="w-full flex justify-between items-center p-4 bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100 font-semibold hover:bg-blue-200 dark:hover:bg-blue-800/60 transition"
-                        >
-                            <span>{province}</span>
-                            {openProvince === province ? (
-                                <ChevronUp className="w-5 h-5 transition-transform duration-300" />
-                            ) : (
-                                <ChevronDown className="w-5 h-5 transition-transform duration-300" />
-                            )}
-                        </button>
-
-                        {/* 2. 可折叠内容 (Cities) */}
-                        {openProvince === province && (
-                            <div className="p-2 pt-1">
-                                {cities.map((city) => (
-                                    <button
-                                        key={city}
-                                        onClick={() => onSelect(city)}
-                                        className={`w-full text-left py-3 px-3 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700 transition duration-150 text-base ${city === currentCity ? 'bg-blue-50 dark:bg-gray-700 font-bold' : ''}`}
-                                    >
-                                        {city}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-
-// --- MD3 卡片组件 (MD3 Card Components) ---
-
-/**
- * 主天气卡片 (Primary Weather Card)
- */
-const PrimaryWeatherCard = ({ data, theme, currentCity, localTime }) => {
-    const WeatherIcon = getWeatherIcon(data.weatherType);
-    const { primaryClass, onPrimaryClass, iconClass } = theme;
-
-    return (
-        <div className={`p-6 md:p-8 rounded-[2.5rem] shadow-xl transition duration-500 ${primaryClass} ${onPrimaryClass} md:col-span-2 flex flex-col justify-between`}>
-            
-            <div className="flex justify-between items-start mb-6">
-                <div className='flex flex-col'>
-                    <h1 className="text-4xl font-extrabold tracking-tight">
-                        {currentCity.split(' ')[0]}
-                    </h1>
-                    <p className="text-sm opacity-80 mt-1 flex items-center space-x-2">
-                        <Clock className="w-4 h-4" />
-                        <span>{localTime}</span>
-                        <span className='font-bold opacity-60 ml-2'>
-                            {OPEN_WEATHER_API_KEY ? '(实时)' : '(模拟)'}
-                        </span>
-                    </p>
-                </div>
-                <div className="w-20 h-20 md:w-28 md:h-28 flex-shrink-0">
-                    <WeatherIcon className={`w-full h-full ${iconClass}`} strokeWidth={1.5} />
-                </div>
-            </div>
-
-            <div className="flex flex-col">
-                 <div className="flex items-start">
-                    <span className="text-8xl md:text-9xl font-black tracking-tighter">
-                        {data.temp}
-                    </span>
-                    <span className="text-4xl font-extrabold mt-4">°C</span>
-                </div>
-
-                <div className="mt-4 ml-1">
-                    <p className="text-3xl font-bold">{data.desc}</p>
-                    <div className="flex items-center space-x-4 mt-2 text-xl font-medium opacity-80">
-                        <span>最高 {data.max}°</span>
-                        <span className='opacity-50'>|</span>
-                        <span>最低 {data.min}°</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-/**
- * 日出日落进度条卡片 (SunPathProgressCard)
- */
-const SunPathProgressCard = ({ data, theme, localTime }) => {
-    const { progressClass } = theme;
-
-    const timeToMinutes = (time) => {
-        const parts = time.split(':');
-        return Number(parts[0] || 0) * 60 + Number(parts[1] || 0);
-    };
-
-    const sunriseMinutes = timeToMinutes(data.sunrise);
-    const sunsetMinutes = timeToMinutes(data.sunset);
-    const currentMinutes = timeToMinutes(localTime);
-
-    const totalDaylight = sunsetMinutes - sunriseMinutes;
-    let elapsedDaylight = currentMinutes - sunriseMinutes;
-
-    // 处理时间循环：如果当前时间在日落之后，则显示 100%
-    if (elapsedDaylight < 0) elapsedDaylight = 0;
-    if (elapsedDaylight > totalDaylight) elapsedDaylight = totalDaylight;
-    
-    // 避免除以零
-    let progressPercent = 0;
-    if (totalDaylight > 0) {
-        progressPercent = (elapsedDaylight / totalDaylight) * 100;
-    } else {
-        // 如果日照时长为零（例如极昼极夜模拟），给一个默认值
-        progressPercent = 50;
-    }
-
-
-    const isDay = currentMinutes > sunriseMinutes && currentMinutes < sunsetMinutes;
-    const ProgressIcon = isDay ? Sun : Moon;
-
-    const radius = 50;
-    const circumference = 2 * Math.PI * radius;
-    const strokeDashoffset = circumference - (progressPercent / 100) * circumference;
-
-    return (
-        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 transition duration-500">
-            <h3 className="text-base font-semibold mb-6 text-gray-600 dark:text-gray-400">日照时长进度</h3>
-            
-            <div className="flex flex-col items-center">
-                <div className="relative w-36 h-36">
-                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
-                        <circle
-                            cx="60" cy="60" r={radius} fill="none" stroke="currentColor" strokeWidth="10"
-                            className="text-gray-200 dark:text-gray-700"
-                        />
-                        <circle
-                            cx="60" cy="60" r={radius} fill="none" stroke="currentColor" strokeWidth="10"
-                            strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round"
-                            className={`transition-all duration-1000 ${progressClass}`}
-                        />
-                    </svg>
-
-                    <div className={`absolute inset-0 flex items-center justify-center ${progressClass}`}>
-                        <ProgressIcon className="w-12 h-12 animate-pulse" />
-                    </div>
-                </div>
-
-                <p className={`text-4xl font-extrabold mt-4 ${progressClass}`}>
-                    {Math.round(progressPercent)}%
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">日光已持续</p>
-
-                <div className="flex justify-between w-full mt-6 text-gray-700 dark:text-gray-300">
-                    <div className="flex flex-col items-start">
-                        <Sunrise className="w-5 h-5 mb-1 text-orange-400" />
-                        <span className="text-xl font-bold">{data.sunrise}</span>
-                        <span className="text-xs opacity-70">日出</span>
-                    </div>
-                    <div className="flex flex-col items-end">
-                        <Sunset className="w-5 h-5 mb-1 text-red-500" />
-                        <span className="text-xl font-bold">{data.sunset}</span>
-                        <span className="text-xs opacity-70">日落</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-/**
- * 洛琪希箴言卡片 (Roxy Quote Card)
- */
-const RoxyCard = ({ data, quote }) => {
-    const quoteBorderColor = data.weatherType === 'clear' ? 'border-amber-400 dark:border-amber-600' : 'border-slate-400 dark:border-slate-600';
-
-    return (
-        <div className="p-6 rounded-[2rem] shadow-md bg-violet-50 dark:bg-violet-950 transition duration-500">
-            <div className="flex items-start space-x-4 mb-4">
-                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-violet-300 dark:bg-violet-700 p-2 flex items-center justify-center">
-                    <Zap className="w-6 h-6 text-violet-800 dark:text-violet-300" />
-                </div>
-                <h3 className="text-xl font-bold pt-1 text-gray-900 dark:text-gray-100">洛琪希的箴言</h3>
-            </div>
-            
-            <p className={`text-lg italic pl-4 border-l-4 ${quoteBorderColor} text-gray-700 dark:text-gray-300 transition-all duration-500`}>
-                “{quote}”
-            </p>
-        </div>
-    );
-};
-
-/**
- * 详细指数卡片 (Detail Metrics Card)
- */
-const DetailMetricsCard = ({ data }) => {
-    const DetailItem = ({ icon: Icon, label, value, color }) => (
-        <div>
-            <div className="flex items-center mb-1 text-gray-500 dark:text-gray-400">
-                 <Icon className={`w-5 h-5 mr-2 ${color}`} />
-                 <p className="text-sm">{label}</p>
-            </div>
-            <p className="text-2xl font-bold text-gray-800 dark:text-gray-200">{value}</p>
-        </div>
-    );
-
-    return (
-        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 transition duration-500">
-            <h3 className="text-base font-semibold mb-6 text-gray-600 dark:text-gray-400">详细指数</h3>
-            <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                <DetailItem icon={Droplet} label="湿度" value={`${data.humidity}%`} color="text-blue-500" />
-                <DetailItem icon={Wind} label="风速" value={`${data.wind} m/s`} color="text-green-500" />
-                <DetailItem icon={Gauge} label="气压" value={`${data.pressure} hPa`} color="text-indigo-500" />
-                <DetailItem icon={Zap} label="体感" value={`${data.apparentTemp}°C`} color="text-red-400" />
-            </div>
-        </div>
-    );
-};
-
-/**
- * 未来七天预报卡片 (7-Day Forecast Card)
- */
-const ForecastCard = ({ data }) => {
-    return (
-        <div className="p-6 rounded-[2rem] shadow-md bg-white dark:bg-gray-800 transition duration-500">
-            <h3 className="text-base font-semibold mb-4 text-gray-600 dark:text-gray-400">未来几天 (模拟预报)</h3>
-            <div className="flex flex-col space-y-3">
-                {data.forecast.map((item, index) => {
-                    const ForecastIcon = getWeatherIcon(item.type);
-                    const iconColor = item.type === 'clear' ? 'text-amber-500' : 'text-slate-600';
-
-                    return (
-                        <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-                            <p className="text-base font-medium text-gray-700 dark:text-gray-300 w-1/4">{item.day}</p>
-                            <div className="w-1/4 flex justify-center">
-                                <ForecastIcon className={`w-6 h-6 ${iconColor}`} />
-                            </div>
-                            <p className="text-base font-bold text-gray-900 dark:text-gray-100 w-1/4 text-right">{item.temp}°</p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 w-1/4 text-right">{item.temp - 5}°</p>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-/**
- * 主应用组件
- */
-const App = () => {
-    // 1. 状态初始化
-    const [currentCity, setCurrentCity] = useState(INITIAL_CITY); 
-    const [weatherData, setWeatherData] = useState(generateMockWeather(INITIAL_CITY));
-    const [isDarkMode, setIsDarkMode] = useState(false);
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [isLoading, setIsLoading] = useState(false); 
-    const [error, setError] = useState(null); 
-    const [localTime, setLocalTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }));
-
-    // 实时时钟更新
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setLocalTime(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }));
-        }, 1000);
-        return () => clearInterval(timer);
-    }, []);
-
-    // 城市选择处理函数 (包含 API 调用/模拟数据加载和延迟)
-    const handleSelectLocation = useCallback(async (city, showLoading = true) => {
-        setError(null);
-        setCurrentCity(city);
-        setIsMenuOpen(false);
-
-        if (showLoading) setIsLoading(true);
-
-        try {
-            const data = await fetchWeatherData(city, OPEN_WEATHER_API_KEY);
-            // 模拟 API 调用的延迟
-            await new Promise(resolve => setTimeout(resolve, showLoading ? 800 : 0));
-            
-            setWeatherData(data);
-
-            if (!OPEN_WEATHER_API_KEY) {
-                 setError("⚠️ API Key 未设置。当前显示的是基于城市特征的模拟数据，并非实时数据。");
-            } else {
-                setError(null);
-            }
-
-        } catch (err) {
-            setError(err.message || "数据加载失败，已切换到模拟模式。");
-            setWeatherData(generateMockWeather(city)); // 错误时也使用模拟数据
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
-
-    // 初始加载效果，确保首次进入应用时有数据
-    useEffect(() => {
-        handleSelectLocation(INITIAL_CITY, false);
-    }, [handleSelectLocation]); 
-
-    // 切换黑暗模式
-    const toggleDarkMode = () => {
-        setIsDarkMode(!isDarkMode);
-        document.documentElement.classList.toggle('dark');
-    };
-
-    // 计算主题类和箴言 (依赖 weatherData)
-    const themeClasses = useMemo(() => {
-        return getThemeClasses(weatherData.weatherType, weatherData.isDaytime);
-    }, [weatherData.weatherType, weatherData.isDaytime]);
-
-    return (
-        <div className={`min-h-screen p-4 md:p-8 font-['Inter'] ${isDarkMode ? 'bg-gray-900' : 'bg-gray-100'} transition-colors duration-500`}>
-            <div className="max-w-6xl mx-auto">
-                {/* 顶部控制栏 - 城市选择和模式切换 */}
-                <div className="flex justify-between items-center mb-6 p-4 bg-white dark:bg-gray-800 rounded-full shadow-lg">
-                    <button 
-                        onClick={() => setIsMenuOpen(true)}
-                        className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                    >
-                        <MapPin className="w-5 h-5" />
-                        <span className="font-semibold text-lg">{currentCity}</span>
-                        <ChevronDown className="w-4 h-4 ml-1" />
-                    </button>
-                    
-                    <button 
-                        onClick={toggleDarkMode}
-                        className="p-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 shadow-inner hover:shadow-md transition duration-300"
-                        aria-label="Toggle Dark Mode"
-                    >
-                        {isDarkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
-                    </button>
-                </div>
-
-                {/* API 错误/警告信息 */}
-                {error && (
-                    <div className="bg-red-100 border border-red-400 text-red-700 dark:bg-red-900 dark:border-red-600 dark:text-red-200 p-4 rounded-xl mb-6 font-medium text-center">
-                        {error}
-                    </div>
-                )}
-
-
-                {/* 主内容区域 */}
-                {isLoading ? (
-                    <LoadingSkeleton />
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-                        <PrimaryWeatherCard data={weatherData} theme={themeClasses} currentCity={currentCity} localTime={localTime} />
-                        <div className="md:col-span-1 row-start-2 md:row-start-1">
-                            <ForecastCard data={weatherData} />
-                        </div>
-                        <RoxyCard data={weatherData} quote={themeClasses.quote} />
-                        <DetailMetricsCard data={weatherData} />
-                        <SunPathProgressCard data={weatherData} theme={themeClasses} localTime={localTime} />
-                    </div>
-                )}
-            </div>
-
-            {/* 城市选择侧边抽屉/浮层 */}
-            {isMenuOpen && (
-                <div 
-                    className="fixed inset-0 z-50 transition-opacity duration-300"
-                    style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }} // 遮罩
-                >
-                    <div 
-                        className="fixed top-0 left-0 w-full md:w-96 h-full bg-white dark:bg-gray-900 shadow-2xl overflow-hidden transition-transform duration-300"
-                    >
-                        <LocationMenu 
-                            onSelect={handleSelectLocation} 
-                            onClose={() => setIsMenuOpen(false)} 
-                            currentCity={currentCity}
-                        />
-                    </div>
-                    {/* 点击遮罩关闭 */}
-                    <div className="absolute inset-0" onClick={() => setIsMenuOpen(false)}></div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-export default App;
+    </script>
+</body>
+</html>
