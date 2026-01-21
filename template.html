@@ -2,10 +2,11 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>Macintosh HD - Finder</title>
+    <title>Macintosh HD - Blog List</title>
     <style>
         :root {
             --mac-bg: #E0E0E0;
+            --mac-border: #000000;
             --mac-blue: #000080;
             --mac-scroll-track: #D2D2D2;
         }
@@ -14,89 +15,80 @@
             background-color: #008080; /* 经典桌面绿 */
             margin: 0;
             font-family: "Geneva", "Chicago", sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
         }
 
+        /* 模拟 Finder 窗口 */
         .finder-window {
-            width: 900px;
-            height: 550px;
+            width: 90%; max-width: 900px; height: 80vh;
             background: var(--mac-bg);
-            border: 2px solid #000;
-            box-shadow: 6px 6px 0px rgba(0,0,0,0.3);
-            display: flex;
-            flex-direction: column;
+            border: 2px solid var(--mac-border);
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.3);
+            display: flex; flex-direction: column;
         }
 
-        /* 模拟早期 Mac 的横纹标题栏 */
         .title-bar {
-            height: 22px;
-            background: repeating-linear-gradient(0deg, #000, #000 1px, transparent 1px, transparent 3px);
-            background-color: var(--mac-bg);
-            border-bottom: 2px solid #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            height: 24px; background: repeating-linear-gradient(0deg, #000, #000 1px, transparent 1px, transparent 3px);
+            background-color: var(--mac-bg); border-bottom: 2px solid #000;
+            display: flex; justify-content: center; align-items: center; font-weight: bold;
         }
-        .title-text { background: var(--mac-bg); padding: 0 10px; font-weight: bold; font-size: 13px; }
+        .title-text { background: var(--mac-bg); padding: 0 10px; font-size: 12px; }
 
-        /* 核心列表区 */
+        /* 核心：长列表区域 */
         .list-container {
-            flex: 1;
-            overflow-y: scroll;
-            background: white;
-            margin: 2px;
-            border: 2px solid #000;
+            flex: 1; background: white; margin: 2px;
+            border: 2px solid #000; overflow-y: scroll;
         }
 
-        /* 还原 Apple 经典滑动条 */
-        .list-container::-webkit-scrollbar { width: 20px; background: var(--mac-scroll-track); }
-        .list-container::-webkit-scrollbar-thumb {
-            background: var(--mac-bg);
-            border: 2px solid #000;
-            box-shadow: inset 1px 1px 0 #fff;
+        /* --- 早期 Apple 风格自定义滚动条 --- */
+        .list-container::-webkit-scrollbar {
+            width: 22px; /* 早期系统滚动条很宽 */
+            background-color: var(--mac-scroll-track);
+            border-left: 2px solid #000;
         }
+        .list-container::-webkit-scrollbar-thumb {
+            background-color: var(--mac-bg);
+            border: 2px solid #000;
+            box-shadow: inset 1px 1px 0 #fff; /* 立体感 */
+        }
+        /* ---------------------------------- */
 
         .list-header {
-            position: sticky; top: 0;
-            display: grid; grid-template-columns: 200px 120px 1fr;
-            background: var(--mac-bg);
-            border-bottom: 1px solid #000;
+            position: sticky; top: 0; z-index: 10;
+            display: grid; grid-template-columns: 2fr 1fr 2fr;
+            background: var(--mac-bg); border-bottom: 1px solid #000;
             font-size: 11px; font-weight: bold;
-            z-index: 10;
         }
-        .header-item { padding: 4px 10px; border-right: 1px solid #999; }
+        .header-item { padding: 4px 10px; border-right: 1px solid #888; }
 
         .article-row {
-            display: grid; grid-template-columns: 200px 120px 1fr;
+            display: grid; grid-template-columns: 2fr 1fr 2fr;
             text-decoration: none; color: black; font-size: 13px;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid #eee; align-items: center;
         }
-        .article-row:hover { background: var(--mac-blue); color: white; }
-
+        .article-row:hover { background-color: var(--mac-blue); color: white; }
         .cell { padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .preview-text { font-size: 12px; opacity: 0.7; }
-        .article-row:hover .preview-text { opacity: 1; color: #ccc; }
+        .preview-text { font-size: 11px; opacity: 0.6; }
+        .article-row:hover .preview-text { color: #ccc; }
 
         .status-bar { height: 20px; font-size: 11px; padding: 0 10px; border-top: 1px solid #000; line-height: 20px; }
     </style>
 </head>
 <body>
-    <div class="finder-window">
-        <div class="title-bar"><div class="title-text"> Macintosh HD : Blog</div></div>
-        <div class="list-container">
-            <div class="list-header">
-                <div class="header-item">Name</div>
-                <div class="header-item">Date Modified</div>
-                <div class="header-item">Preview</div>
-            </div>
-            </div>
-        <div class="status-bar" id="stat">Loading...</div>
-    </div>
-    <script>
-        document.getElementById('stat').innerText = document.querySelectorAll('.article-row').length + " items in folder";
-    </script>
+<div class="finder-window">
+    <div class="title-bar"><div class="title-text"> Macintosh HD : Posts</div></div>
+    <div class="list-container">
+        <div class="list-header">
+            <div class="header-item">Name (Filename)</div>
+            <div class="header-item">Date Modified</div>
+            <div class="header-item">Preview</div>
+        </div>
+        </div>
+    <div class="status-bar" id="stat">0 items</div>
+</div>
+<script>
+    document.getElementById('stat').innerText = document.querySelectorAll('.article-row').length + " items in folder";
+</script>
 </body>
 </html>
