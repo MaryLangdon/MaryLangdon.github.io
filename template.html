@@ -10,7 +10,6 @@
         .title-text { background: #E0E0E0; padding: 0 12px; font-weight: bold; font-size: 13px; }
         .content-area { flex: 1; background: white; margin: 3px; border: 2px solid #000; overflow-y: scroll; position: relative; }
         
-        /* 宽大的灰色复古滚动条 */
         .content-area::-webkit-scrollbar { width: 24px; background: #D2D2D2; border-left: 2px solid #000; }
         .content-area::-webkit-scrollbar-thumb { background: #E0E0E0; border: 2px solid #000; box-shadow: inset 1px 1px 0 #fff; }
         
@@ -33,13 +32,13 @@
             <div class="list-header">
                 <div class="h-cell">Name</div>
                 <div class="h-cell">Date</div>
-                <div class="h-cell">Preview Content</div>
+                <div class="h-cell">Preview</div>
             </div>
             </div>
         <div class="footer" id="item-count">0 items</div>
     </div>
     <script>
-        document.getElementById('item-count').innerText = document.querySelectorAll('.article-row').length + " items in folder";
+        document.getElementById('item-count').innerText = document.querySelectorAll('.article-row').length + " items";
     </script>
 </body>
 </html>
