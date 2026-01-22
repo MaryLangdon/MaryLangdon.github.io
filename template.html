@@ -2,15 +2,8 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>Macintosh HD - Blog List</title>
+    <title>Macintosh HD</title>
     <style>
-        :root {
-            --mac-bg: #E0E0E0;
-            --mac-border: #000000;
-            --mac-blue: #000080;
-            --mac-scroll-track: #D2D2D2;
-        }
-
         body {
             background-color: #008080; /* 经典桌面绿 */
             margin: 0;
@@ -18,61 +11,45 @@
             display: flex; justify-content: center; align-items: center;
             height: 100vh; overflow: hidden;
         }
-
-        /* 模拟 Finder 窗口 */
         .finder-window {
             width: 90%; max-width: 900px; height: 80vh;
-            background: var(--mac-bg);
-            border: 2px solid var(--mac-border);
+            background: #E0E0E0; border: 2px solid #000;
             box-shadow: 4px 4px 0px rgba(0,0,0,0.3);
             display: flex; flex-direction: column;
         }
-
         .title-bar {
             height: 24px; background: repeating-linear-gradient(0deg, #000, #000 1px, transparent 1px, transparent 3px);
-            background-color: var(--mac-bg); border-bottom: 2px solid #000;
-            display: flex; justify-content: center; align-items: center; font-weight: bold;
+            background-color: #E0E0E0; border-bottom: 2px solid #000;
+            display: flex; justify-content: center; align-items: center;
         }
-        .title-text { background: var(--mac-bg); padding: 0 10px; font-size: 12px; }
-
-        /* 核心：长列表区域 */
+        .title-text { background: #E0E0E0; padding: 0 10px; font-size: 12px; font-weight: bold; }
+        
+        /* 列表区域与复古滚动条 */
         .list-container {
             flex: 1; background: white; margin: 2px;
             border: 2px solid #000; overflow-y: scroll;
         }
-
-        /* --- 早期 Apple 风格自定义滚动条 --- */
+        /* 模拟 System 7 宽滚动条 */
         .list-container::-webkit-scrollbar {
-            width: 22px; /* 早期系统滚动条很宽 */
-            background-color: var(--mac-scroll-track);
-            border-left: 2px solid #000;
+            width: 22px; background-color: #D2D2D2; border-left: 2px solid #000;
         }
         .list-container::-webkit-scrollbar-thumb {
-            background-color: var(--mac-bg);
-            border: 2px solid #000;
-            box-shadow: inset 1px 1px 0 #fff; /* 立体感 */
+            background-color: #E0E0E0; border: 2px solid #000;
+            box-shadow: inset 1px 1px 0 #fff;
         }
-        /* ---------------------------------- */
 
         .list-header {
-            position: sticky; top: 0; z-index: 10;
-            display: grid; grid-template-columns: 2fr 1fr 2fr;
-            background: var(--mac-bg); border-bottom: 1px solid #000;
-            font-size: 11px; font-weight: bold;
+            position: sticky; top: 0; display: grid; grid-template-columns: 200px 120px 1fr;
+            background: #E0E0E0; border-bottom: 1px solid #000; font-size: 11px; font-weight: bold;
         }
         .header-item { padding: 4px 10px; border-right: 1px solid #888; }
-
         .article-row {
-            display: grid; grid-template-columns: 2fr 1fr 2fr;
-            text-decoration: none; color: black; font-size: 13px;
-            border-bottom: 1px solid #eee; align-items: center;
+            display: grid; grid-template-columns: 200px 120px 1fr;
+            text-decoration: none; color: black; font-size: 13px; border-bottom: 1px solid #eee;
         }
-        .article-row:hover { background-color: var(--mac-blue); color: white; }
+        .article-row:hover { background-color: #000080; color: white; }
         .cell { padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .preview-text { font-size: 11px; opacity: 0.6; }
-        .article-row:hover .preview-text { color: #ccc; }
-
-        .status-bar { height: 20px; font-size: 11px; padding: 0 10px; border-top: 1px solid #000; line-height: 20px; }
     </style>
 </head>
 <body>
@@ -80,15 +57,17 @@
     <div class="title-bar"><div class="title-text"> Macintosh HD : Posts</div></div>
     <div class="list-container">
         <div class="list-header">
-            <div class="header-item">Name (Filename)</div>
+            <div class="header-item">Name</div>
             <div class="header-item">Date Modified</div>
             <div class="header-item">Preview</div>
         </div>
         </div>
-    <div class="status-bar" id="stat">0 items</div>
+    <div class="status-bar" style="padding: 5px; font-size: 11px; border-top: 1px solid #000;">
+        <span id="stat">Scanning...</span>
+    </div>
 </div>
 <script>
-    document.getElementById('stat').innerText = document.querySelectorAll('.article-row').length + " items in folder";
+    document.getElementById('stat').innerText = document.querySelectorAll('.article-row').length + " items";
 </script>
 </body>
 </html>
