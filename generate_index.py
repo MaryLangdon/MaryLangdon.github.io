@@ -6,21 +6,25 @@ def get_preview(path):
     try:
         with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
-        # 简单清洗预览文本
-        text = re.sub(r'<[^>]+>', '', content)
+        text = re.sub(r'<(style|script)[^>]*>.*?</\1>', '', content, flags=re.DOTALL)
+        text = re.sub(r'<[^>]+>', '', text)
         return " ".join(text.split())[:100] + "..."
     except:
         return ""
 
 def main():
     posts_dir = 'posts'
+    if not os.path.exists(posts_dir):
+        os.makedirs(posts_dir)
+    
     files = [f for f in os.listdir(posts_dir) if f.endswith('.html')]
     files.sort(key=lambda x: os.path.getmtime(os.path.join(posts_dir, x)), reverse=True)
 
     rows = ""
     for f in files:
-        m_time = time.strftime('%Y-%m-%d', time.localtime(os.path.getmtime(os.path.join(posts_dir, f))))
-        preview = get_preview(os.path.join(posts_dir, f))
+        full_path = os.path.join(posts_dir, f)
+        m_time = time.strftime('%Y-%m-%d', time.localtime(os.path.getmtime(full_path)))
+        preview = get_preview(full_path)
         rows += f'''
         <a href="{posts_dir}/{f}" class="article-row">
             <div class="cell name">{f}</div>
@@ -28,7 +32,6 @@ def main():
             <div class="cell preview-text">{preview}</div>
         </a>'''
 
-    # 读取母版并生成成品
     with open('template.html', 'r', encoding='utf-8') as t:
         tpl = t.read()
     

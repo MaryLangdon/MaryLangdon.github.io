@@ -5,7 +5,7 @@
     <title>Macintosh HD</title>
     <style>
         body {
-            background-color: #008080; /* 经典桌面绿 */
+            background-color: #008080;
             margin: 0;
             font-family: "Geneva", "Chicago", sans-serif;
             display: flex; justify-content: center; align-items: center;
@@ -23,13 +23,10 @@
             display: flex; justify-content: center; align-items: center;
         }
         .title-text { background: #E0E0E0; padding: 0 10px; font-size: 12px; font-weight: bold; }
-        
-        /* 列表区域与复古滚动条 */
         .list-container {
             flex: 1; background: white; margin: 2px;
             border: 2px solid #000; overflow-y: scroll;
         }
-        /* 模拟 System 7 宽滚动条 */
         .list-container::-webkit-scrollbar {
             width: 22px; background-color: #D2D2D2; border-left: 2px solid #000;
         }
@@ -37,7 +34,6 @@
             background-color: #E0E0E0; border: 2px solid #000;
             box-shadow: inset 1px 1px 0 #fff;
         }
-
         .list-header {
             position: sticky; top: 0; display: grid; grid-template-columns: 200px 120px 1fr;
             background: #E0E0E0; border-bottom: 1px solid #000; font-size: 11px; font-weight: bold;
@@ -50,6 +46,7 @@
         .article-row:hover { background-color: #000080; color: white; }
         .cell { padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .preview-text { font-size: 11px; opacity: 0.6; }
+        .status-bar { padding: 5px; font-size: 11px; border-top: 1px solid #000; background: #E0E0E0; }
     </style>
 </head>
 <body>
@@ -62,9 +59,7 @@
             <div class="header-item">Preview</div>
         </div>
         </div>
-    <div class="status-bar" style="padding: 5px; font-size: 11px; border-top: 1px solid #000;">
-        <span id="stat">Scanning...</span>
-    </div>
+    <div class="status-bar" id="stat">Scanning...</div>
 </div>
 <script>
     document.getElementById('stat').innerText = document.querySelectorAll('.article-row').length + " items";
